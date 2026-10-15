@@ -1,0 +1,35 @@
+_schema-version: "3.1"
+ID: demo.cap
+version: 1.0.0
+build-parameters:
+  before-all:
+    - builder: custom
+      commands:
+        - npx cds build --production
+
+modules:
+  # --------------------- SERVICE ---------------------
+  - name: demo-srv
+  # the path is build output that is not in the repository
+    type: nodejs
+    path: gen/srv
+    parameters:
+      buildpack: nodejs_buildpack
+    requires:
+      - name: demo-db
+  - name: demo-router
+    type: approuter.nodejs
+    path: router
+  - name: demo-db-deployer
+    type: hdb
+    path: db
+  - name: demo-orders-ui
+    type: html5
+    path: app/orders
+  - name: demo-content
+    type: com.sap.application.content
+    path: .
+
+resources:
+  - name: demo-db
+    type: com.sap.xs.hdi-container

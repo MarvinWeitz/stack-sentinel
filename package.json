@@ -1,0 +1,18 @@
+{
+  "name": "stack-sentinel",
+  "version": "0.3.0",
+  "description": "Scans projects for outdated or unsupported stack versions and reports findings to a webhook.",
+  "type": "module",
+  "bin": {
+    "stack-sentinel": "bin/stack-sentinel.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "test:live": "node --test live/feed.live.js",
+    "hooks": "git config core.hooksPath .githooks"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}

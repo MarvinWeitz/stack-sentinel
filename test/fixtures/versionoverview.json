@@ -1,0 +1,27 @@
+{
+  "versions": [
+    { "version": "1.152.*", "support": "Maintenance", "lts": false, "eom": "", "eocp": "Q3/2027" },
+    { "version": "1.148.*", "support": "Maintenance", "lts": true, "eom": "Long-term Maintenance, Q3/2027", "eomm": "Long-term Maintenance, Q3/2027", "eocp": "Q3/2028" },
+    { "version": "1.145.*", "support": "Maintenance", "lts": false, "eom": "Q3/2026", "eomm": "Q3/2026", "eocp": "Q3/2027" },
+    { "version": "1.137.*", "support": "Skipped", "lts": false, "eom": "SAPUI5 version not released see SAP Note 3617413", "eocp": "" },
+    { "version": "1.136.*", "support": "Maintenance", "lts": true, "eom": "Long-term Maintenance, Q4/2032", "eomm": "Long-term Maintenance, Q3/2026", "eocp": "Q4/2033" },
+    { "version": "1.133.*", "support": "Out of Maintenance", "lts": false, "eom": "Q3/2025", "eocp": "Q3/2026" },
+    { "version": "1.120.*", "support": "Maintenance", "lts": true, "eom": "Long-term Maintenance, Q4/2030", "eomm": "Long-term Maintenance, Q4/2026", "eocp": "Q4/2031" },
+    { "version": "1.108.*", "support": "Out of maintenance", "lts": true, "eom": "Long-term Maintenance, Q4/2030", "eomm": "Long-term Maintenance, Q4/2025", "eocp": "Q4/2031" },
+    { "version": "1.96.*", "support": "Out of maintenance", "lts": true, "eom": "Long-term Maintenance, Q4/2026", "eocp": "Q4/2027" },
+    { "version": "*", "support": "Out of maintenance", "lts": false, "eom": "", "eocp": "" }
+  ],
+  "patches": [
+    { "version": "1.148.12", "eocp": "To Be Determined" },
+    { "version": "1.148.11", "eocp": "Q4/2027" },
+    { "version": "1.136.23", "eocp": "To Be Determined" },
+    { "version": "1.136.12", "eocp": "Q4/2026" },
+    { "version": "1.136.3-legacy-free", "eocp": "Q3/2026" },
+    { "version": "1.120.52", "eocp": "To Be Determined" },
+    { "version": "1.120.51", "eocp": "Q3/2027" },
+    { "version": "1.120.33", "eocp": "Q3/2026" },
+    { "version": "1.120.2", "eocp": "Q4/2024", "extended_eocp": "Q4/2026" },
+    { "version": "1.108.56", "eocp": "To Be Determined" },
+    { "version": "1.108.45", "eocp": "Q3/2026", "removed": true }
+  ]
+}

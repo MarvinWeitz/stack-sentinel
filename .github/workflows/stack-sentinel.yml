@@ -1,0 +1,45 @@
+# Copy to .github/workflows/stack-sentinel.yml in the project to monitor.
+#
+# Everything is configured in the repository's settings, without editing this file:
+#   Settings -> Secrets and variables -> Actions
+#     Secrets:   SENTINEL_WEBHOOK_URL    where the report is posted (Teams or a JSON endpoint)
+#                SENTINEL_HEARTBEAT_URL  optional: gets a ping after every run
+#     Variables: any SENTINEL_... setting from the README, for example
+#                SENTINEL_NOTIFY_ON = ok   send a card on every run; useful for a first test
+#                SENTINEL_SHARED_CONFIG    address of a config shared by many projects
+#                SENTINEL_SKIP_CHECKS, SENTINEL_UI5_WARN_DAYS, ...
+# Variables defined for a whole organization work the same way.
+name: stack-sentinel
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays 06:17 UTC
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      # Where the tool is installed from. "#stable" follows the latest tested release, so
+      # the tool stays current without anyone editing this file. To stay on one release
+      # instead, set the variable SENTINEL_SOURCE to e.g. github:MarvinWeitz/stack-sentinel#v0.2.0
+      SENTINEL_SOURCE: ${{ vars.SENTINEL_SOURCE || 'github:MarvinWeitz/stack-sentinel#stable' }}
+      SENTINEL_PATH: ${{ vars.SENTINEL_PATH || '.' }} # folder to scan
+      SENTINEL_PROJECT: ${{ vars.SENTINEL_PROJECT || github.repository }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Load SENTINEL_ settings from the repository's variables
+        env:
+          ALL_VARIABLES: ${{ toJSON(vars) }}
+        run: |
+          echo "$ALL_VARIABLES" | jq -r '
+            to_entries[]
+            | select(.key | startswith("SENTINEL_"))
+            | select(.key | IN("SENTINEL_SOURCE", "SENTINEL_PATH", "SENTINEL_PROJECT", "SENTINEL_WEBHOOK_URL", "SENTINEL_HEARTBEAT_URL") | not)
+            | select(.value | test("\n") | not)
+            | "\(.key)=\(.value)"' >> "$GITHUB_ENV"
+      - run: npx --yes "$SENTINEL_SOURCE" "$SENTINEL_PATH"
+        env:
+          SENTINEL_WEBHOOK_URL: ${{ secrets.SENTINEL_WEBHOOK_URL }}
+          SENTINEL_HEARTBEAT_URL: ${{ secrets.SENTINEL_HEARTBEAT_URL }}

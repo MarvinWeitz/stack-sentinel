@@ -1,0 +1,5 @@
+{
+  "sharedConfig": "../policy.json",
+  "project": "Customer A / Orders",
+  "ui5": { "warnDays": 365 }
+}

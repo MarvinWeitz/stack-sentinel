@@ -1,0 +1,4 @@
+{
+  "sap.app": { "id": "demo.btp" },
+  "sap.cloud": { "public": true, "service": "demo" }
+}

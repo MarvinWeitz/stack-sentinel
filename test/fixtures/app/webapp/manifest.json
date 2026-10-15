@@ -1,0 +1,4 @@
+{
+  "sap.app": { "id": "demo.app" },
+  "sap.ui5": { "dependencies": { "minUI5Version": "1.96.0", "libs": { "sap.m": {} } } }
+}

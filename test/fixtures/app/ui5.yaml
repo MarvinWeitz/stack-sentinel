@@ -1,0 +1,9 @@
+specVersion: "3.0"
+metadata:
+  name: demo.app
+type: application
+framework:
+  name: SAPUI5
+  version: "1.120.51"
+  libraries:
+    - name: sap.m

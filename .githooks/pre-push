@@ -1,0 +1,6 @@
+#!/bin/sh
+# Runs the test suite before every push. Enable once per clone with: npm run hooks
+npm test --silent || {
+  echo "stack-sentinel: tests failed, push stopped. (Skip once with: git push --no-verify)" >&2
+  exit 1
+}

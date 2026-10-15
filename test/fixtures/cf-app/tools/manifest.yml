@@ -1,0 +1,8 @@
+applications:
+  - name: demo-api
+    path: api
+    buildpacks:
+      - nodejs_buildpack
+    memory: 256M
+  - name: demo-static
+    path: missing

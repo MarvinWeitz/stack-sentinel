@@ -1,0 +1,1 @@
+{ "name": "legacy", "dependencies": { "@sap/cds": "^7" } }

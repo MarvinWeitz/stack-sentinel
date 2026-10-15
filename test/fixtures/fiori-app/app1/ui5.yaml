@@ -1,0 +1,24 @@
+specVersion: "3.1"
+metadata:
+  name: demo.app1
+type: application
+server:
+  customMiddleware:
+    - name: fiori-tools-proxy
+      afterMiddleware: compression
+      configuration:
+        ignoreCertError: false
+        ui5:
+          path:
+            - /resources
+            - /test-resources
+          url: https://ui5.sap.com
+          version: 1.120.51
+        backend:
+          - path: /sap
+            url: https://backend.example
+    - name: fiori-tools-appreload
+      afterMiddleware: compression
+      configuration:
+        port: 35729
+        version: 9.9.9

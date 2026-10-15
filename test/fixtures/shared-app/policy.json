@@ -1,0 +1,4 @@
+{
+  "ui5": { "requireLts": false, "warnDays": 30, "probes": [{ "name": "shared probe", "url": "https://example.invalid/v.json" }] },
+  "notifyOn": "error"
+}

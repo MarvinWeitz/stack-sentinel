@@ -1,0 +1,39 @@
+# Add as a pipeline in the project to monitor.
+#
+# Everything is configured in the pipeline's variables, without editing this file:
+#   Pipelines -> (this pipeline) -> Edit -> Variables
+#     SENTINEL_WEBHOOK_URL    secret: where the report is posted (Teams or a JSON endpoint)
+#     SENTINEL_HEARTBEAT_URL  secret, optional: gets a ping after every run
+#     any other SENTINEL_... setting from the README, for example
+#     SENTINEL_NOTIFY_ON = ok   send a card on every run; useful for a first test
+#     SENTINEL_SHARED_CONFIG    address of a config shared by many projects
+#     SENTINEL_SOURCE, SENTINEL_PATH, SENTINEL_PROJECT  where to install from, what to scan, the
+#                               report title (defaults below)
+# Azure DevOps passes non-secret variables to the tool by itself; only the two secrets
+# need the mapping at the bottom of this file.
+trigger: none
+schedules:
+  - cron: "17 6 * * 1" # Mondays 06:17 UTC
+    displayName: Weekly stack-sentinel scan
+    branches:
+      include: [main] # the branch to scan
+    always: true # run even when there are no new commits
+pool:
+  vmImage: ubuntu-latest
+steps:
+  - task: NodeTool@0
+    inputs:
+      versionSpec: "22.x"
+  - script: |
+      # Defaults, used unless the pipeline has a variable of the same name.
+      # "#stable" follows the latest tested release, so the tool stays current without anyone
+      # editing this file. To stay on one release, set SENTINEL_SOURCE to e.g.
+      # github:MarvinWeitz/stack-sentinel#v0.2.0
+      export SENTINEL_SOURCE="${SENTINEL_SOURCE:-github:MarvinWeitz/stack-sentinel#stable}"
+      export SENTINEL_PATH="${SENTINEL_PATH:-.}"   # folder to scan
+      export SENTINEL_PROJECT="${SENTINEL_PROJECT:-$(Build.Repository.Name)}"
+      npx --yes "$SENTINEL_SOURCE" "$SENTINEL_PATH"
+    displayName: Run stack-sentinel
+    env:
+      SENTINEL_WEBHOOK_URL: $(SENTINEL_WEBHOOK_URL)
+      SENTINEL_HEARTBEAT_URL: $(SENTINEL_HEARTBEAT_URL)

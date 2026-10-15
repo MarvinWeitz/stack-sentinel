@@ -1,0 +1,74 @@
+---
+language: nodejs
+default_versions:
+- name: node
+  version: 22.x
+- name: python
+  version: 3.13.x
+dependency_deprecation_dates:
+- version_line: 22.x.x
+  name: node
+  date: 2027-04-30
+  link: https://github.com/nodejs/Release
+- version_line: 24.x.x
+  name: node
+  date: 2028-04-30
+  link: https://github.com/nodejs/Release
+- version_line: 3.11.x
+  name: python
+  date: 2027-10-24
+  link: https://www.python.org/dev/peps/pep-0664/
+- version_line: 3.12.x
+  name: python
+  date: 2028-10-02
+  link: https://www.python.org/dev/peps/pep-0693/
+- version_line: 3.13.x
+  name: python
+  date: 2029-10-07
+  link: https://peps.python.org/pep-0719/
+- version_line: 3.14.x
+  name: python
+  date: 2030-10-07
+  link: https://peps.python.org/pep-0745/
+dependencies:
+- name: node
+  version: 22.23.3
+  uri: https://buildpacks.cloudfoundry.org/dependencies/node/node_22.23.3_linux_x64_cflinuxfs4_3f5d388e.tgz
+  sha256: 3f5d388e33336b7db0adbe2bf06c47012c6947ec777a6e9282a54dac091e0e04
+  cf_stacks:
+  - cflinuxfs4
+  source: https://nodejs.org/dist/v22.23.3/node-v22.23.3.tar.gz
+  source_sha256: 9436c81b284889303d39f5b8bd629bf19e790c665ccb94b4994aa87220d9799a
+- name: node
+  version: 22.23.3
+  uri: https://buildpacks.cloudfoundry.org/dependencies/node/node_22.23.3_linux_x64_cflinuxfs5_a4673a96.tgz
+  sha256: a4673a964ac17f90f7a5175151eeb0392d105ee3f050897220a51e38a5f231fd
+  cf_stacks:
+  - cflinuxfs5
+  source: https://nodejs.org/dist/v22.23.3/node-v22.23.3.tar.gz
+  source_sha256: 9436c81b284889303d39f5b8bd629bf19e790c665ccb94b4994aa87220d9799a
+- name: node
+  version: 24.21.0
+  uri: https://buildpacks.cloudfoundry.org/dependencies/node/node_24.21.0_linux_x64_cflinuxfs4_d0fe2f14.tgz
+  sha256: d0fe2f148bf86a906011c09a74abb92ab7fbdb02e4cc31a29c5b07c2c9cf65d1
+  cf_stacks:
+  - cflinuxfs4
+  source: https://nodejs.org/dist/v24.21.0/node-v24.21.0.tar.gz
+  source_sha256: 622424efb5dc0c26c93fbb619ff10737ee289c605b837c88778e186925d82777
+- name: node
+  version: 24.21.0
+  uri: https://buildpacks.cloudfoundry.org/dependencies/node/node_24.21.0_linux_x64_cflinuxfs5_fd01211d.tgz
+  sha256: fd01211d93ef67f773671f59d26df9b3fc36e2e5511acec9772777c2e8a173d5
+  cf_stacks:
+  - cflinuxfs5
+  source: https://nodejs.org/dist/v24.21.0/node-v24.21.0.tar.gz
+  source_sha256: 622424efb5dc0c26c93fbb619ff10737ee289c605b837c88778e186925d82777
+- name: python
+  version: 3.11.14
+  uri: https://buildpacks.cloudfoundry.org/dependencies/python/python_3.11.14_linux_x64_cflinuxfs3_6d5446f5.tgz
+  sha256: 6d5446f502869094a9fcb701c41a6aa1c4823702e07aefb3c243e74468f5e17d
+  cf_stacks:
+  - cflinuxfs3
+  source: https://www.python.org/ftp/python/3.11.14/Python-3.11.14.tgz
+  source_sha256: 563d2a1b2a5ba5d5409b5ecd05a0e1bf9b028cf3e6a6f0c87a5dc8dc3f2d9182
+pre_package: scripts/build.sh

@@ -1,0 +1,1 @@
+{ "sap.app": { "id": "demo.app2" }, "sap.ui5": { "dependencies": { "minUI5Version": "1.108.0" } } }

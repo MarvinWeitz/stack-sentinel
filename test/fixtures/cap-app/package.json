@@ -1,0 +1,6 @@
+{
+  "name": "demo-cap",
+  "workspaces": ["services/*"],
+  "dependencies": { "@sap/cds": "^9", "@sap/cds-mtxs": "^2", "express": "^4" },
+  "devDependencies": { "@sap/cds-dk": "^8" }
+}

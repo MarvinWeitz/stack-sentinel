@@ -1,0 +1,7 @@
+{
+  "notifyOn": "warn",
+  "ui5": { "warnDays": 270, "requireLts": true },
+  "node": { "warnDays": 270 },
+  "cf": { "warnDays": 270 },
+  "cap": { "warnDays": 270, "maintenanceMonths": 11 }
+}

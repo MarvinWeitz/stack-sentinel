@@ -1,0 +1,6 @@
+{
+  "project": "stack-sentinel",
+  "scan": {
+    "exclude": ["node_modules", ".git", "dist", "build", "gen", "coverage", ".cache", "test"]
+  }
+}
