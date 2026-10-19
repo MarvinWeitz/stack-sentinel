@@ -1,0 +1,43 @@
+# Changelog
+
+What changed in each release of `@cbs-consulting/stack-sentinel`, newest
+first. Add your change under "Unreleased" in the same pull request; a check
+fails otherwise, unless the pull request has the label "no changelog". To
+release, raise the version in `package.json` and rename "Unreleased" to that
+version and the date. The tests fail while the version in `package.json` has
+no entry here, and the Release workflow publishes the entry as the GitHub
+release notes.
+
+## Unreleased
+
+- Releases have a changelog. `CHANGELOG.md` ships in the npm package, and
+  each version's entry is its GitHub release notes.
+
+## 0.3.3 - 2026-10-19
+
+- The npm-audit check reports overrides in `package.json` that are no longer
+  needed, as info: overrides whose package every dependent already allows at
+  the installed version, and overrides for packages that are not installed.
+- When only the lockfile stands between a vulnerable package and its fix, the
+  action says so: `npm audit fix` is enough and no override is needed.
+
+## 0.3.2 - 2026-10-19
+
+- The npm-audit check names the direct dependency each vulnerable package
+  comes in through (`details.introducedBy` in the JSON report). Its action
+  depends on the version ranges along the way: `npm audit fix`, raising the
+  version in `package.json`, updating the direct dependency, adding an
+  override, or waiting for a release of the package that bundles it.
+
+## 0.3.1 - 2026-10-19
+
+- Published to npm as `@cbs-consulting/stack-sentinel`. Pipelines install
+  `@cbs-consulting/stack-sentinel@latest` instead of
+  `github:cbs-consulting/stack-sentinel#stable`.
+- Releases are staged on npm and go live only when a maintainer approves them.
+- The license is Apache-2.0.
+- No changes to the checks.
+
+## 0.3.0 - 2026-10-19
+
+- First release.

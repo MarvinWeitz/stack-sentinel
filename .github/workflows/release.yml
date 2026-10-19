@@ -90,7 +90,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.check.outputs.sha }}
           VERSION: ${{ steps.check.outputs.version }}
-        run: gh release create "v$VERSION" --target "$SHA" --title "v$VERSION" --generate-notes
+        run: |
+          # The notes are the version's entry in CHANGELOG.md; npm test made sure it exists
+          awk -v v="$VERSION" '$1 == "##" { if (found) exit; found = ($2 == v); next } found' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --target "$SHA" --title "v$VERSION" --notes-file "$RUNNER_TEMP/notes.md"
       - name: Dry run summary
         if: ${{ inputs.dry_run && steps.check.outputs.skip != 'true' }}
         run: echo "::notice::Dry run passed. Version ${{ steps.check.outputs.version }} could be released; nothing was changed."

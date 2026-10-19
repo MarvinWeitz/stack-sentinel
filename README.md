@@ -312,7 +312,16 @@ Releases are made by the "Release" workflow in the Actions tab, which
 2. requires a higher version in `package.json` than the latest one on npm,
 3. stages it on npm, with a provenance statement that ties the package to
    this repository and commit, and
-4. publishes that commit as the GitHub release `v<version>`.
+4. publishes that commit as the GitHub release `v<version>`, with the
+   version's entry in [`CHANGELOG.md`](CHANGELOG.md) as the release notes.
+
+Every change goes into the "Unreleased" section of `CHANGELOG.md` in its
+pull request. The "Changelog entry" check fails on pull requests that do not
+change `CHANGELOG.md`; give those that change nothing a user notices (chores,
+CI, typos) the label "no changelog". To prepare a release, raise the version in `package.json` and
+rename "Unreleased" to `<version> - <date>`. The tests fail while the version
+in `package.json` has no entry, so neither the pull request nor the release
+can go through without one.
 
 A staged version is not installable yet. It goes live, and becomes
 `@latest`, when a maintainer approves it with two-factor authentication: on
