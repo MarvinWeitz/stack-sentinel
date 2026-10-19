@@ -269,7 +269,12 @@ function graphFixAction({ graph, targets, label }, pkg, fixed, lockfile) {
     }
   }
   if (blockers.length === 0) {
-    return `Update ${pkg.name} to ${fixed} or later (run "npm audit fix" in ${where})`;
+    // nothing pins it: the declared ranges allow the fix, and only the lockfile is out of date
+    const allowing = unique(targets.flatMap((t) => (graph.parents.get(t) ?? [])
+      .map((e) => (graph.roots.has(e.from) ? manifestOf(lockfile, e.from) : label(e.from)))));
+    if (allowing.length === 0) return `Update ${pkg.name} to ${fixed} or later (run "npm audit fix" in ${where})`;
+    return `Update ${pkg.name} to ${fixed} or later: ${list(allowing)} already ${allowing.length === 1 ? 'allows' : 'allow'} it, `
+      + `so only the lockfile is out of date (run "npm audit fix" in ${where})`;
   }
   const who = blockers.map((b) => `${graph.roots.has(b.from) ? manifestOf(lockfile, b.from) : label(b.from)} (asks for "${b.range}")`);
   const fromManifest = unique(blockers.filter((b) => graph.roots.has(b.from)).map((b) => manifestOf(lockfile, b.from)));
@@ -294,6 +299,88 @@ function fixAction(pkg, version, hits, lockfile) {
   const fixed = firstFixedVersion(version, hits);
   if (!fixed) return `No fixed version of ${pkg.name} is known yet; check the advisories, and consider replacing it`;
   return `Update ${pkg.name} to ${fixed} or later (run "npm audit fix" in ${where})`;
+}
+
+/**
+ * The entries of a package.json "overrides" field: plain ones ("pkg": "spec", also with a
+ * "pkg@range" key) and those scoped one level under a parent ("parent": { "pkg": "spec" },
+ * where "." is the parent itself). Returns [{ name, parent, key }]; key names the entry for
+ * the action, e.g. "proxy-addr" or "express" > "proxy-addr".
+ */
+export function overrideEntries(overrides) {
+  const nameOf = (key) => (key.lastIndexOf('@') > 0 ? key.slice(0, key.lastIndexOf('@')) : key);
+  const out = [];
+  for (const [key, value] of Object.entries(overrides ?? {})) {
+    if (typeof value === 'string') {
+      out.push({ name: nameOf(key), parent: null, key: `"${key}"` });
+    } else if (value && typeof value === 'object') {
+      for (const [child, spec] of Object.entries(value)) {
+        if (typeof spec !== 'string') continue; // deeper nesting is not judged
+        if (child === '.') out.push({ name: nameOf(key), parent: null, key: `"${key}"` });
+        else out.push({ name: nameOf(child), parent: nameOf(key), key: `"${child}" under "${key}"` });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Overrides that no longer do anything: the package is not installed any more, or every
+ * package that asks for it already allows the version installed, so removing the override
+ * changes nothing. The lockfile records the ranges packages declare themselves, before any
+ * override, which is what makes this visible. One info finding per such override.
+ */
+export function unneededOverrides(lockfile, graph, overrides) {
+  const manifest = manifestOf(lockfile, '');
+  const label = (path) => (graph.roots.has(path) ? manifestOf(lockfile, path) : `${graph.nodes.get(path).name} ${graph.nodes.get(path).version}`);
+  // is the installed copy at path reached through a package with this name?
+  const below = (path, name) => {
+    const seen = new Set([path]);
+    const queue = [path];
+    for (let i = 0; i < queue.length; i++) {
+      for (const { from } of graph.parents.get(queue[i]) ?? []) {
+        if (graph.roots.has(from) || seen.has(from)) continue;
+        if (graph.nodes.get(from).name === name) return true;
+        seen.add(from);
+        queue.push(from);
+      }
+    }
+    return false;
+  };
+  const findings = [];
+  for (const entry of overrideEntries(overrides)) {
+    const base = { check: CHECK, severity: 'info', source: 'overrides', file: manifest, details: { override: entry.key, package: entry.name } };
+    const remove = `Remove ${entry.key} from "overrides" in ${manifest}, then run "npm install" in ${folder(lockfile)}`;
+    const targets = [...graph.nodes.values()]
+      .filter((n) => !graph.roots.has(n.path) && n.name === entry.name && (!entry.parent || below(n.path, entry.parent)))
+      .map((n) => n.path);
+    if (targets.length === 0) {
+      const where = entry.parent ? ` below ${entry.parent}` : '';
+      findings.push({ ...base, message: `The override for ${entry.name}${where} in ${manifest} is unused: ${entry.name} is not installed${where}.`, action: remove });
+      continue;
+    }
+    const asks = [];
+    let needed = false;
+    for (const path of targets) {
+      const version = parts(graph.nodes.get(path).version);
+      for (const edge of graph.parents.get(path) ?? []) {
+        const range = parseRange(edge.range);
+        if (!version || !range || !satisfies(range, version)) needed = true; // unreadable ranges count as needed
+        if (!asks.some((a) => a.from === edge.from && a.range === edge.range)) asks.push(edge);
+      }
+    }
+    if (needed || asks.length === 0) continue;
+    const versions = unique(targets.map((t) => graph.nodes.get(t).version));
+    const who = asks.map((a) => `${label(a.from)} (asks for "${a.range}")`);
+    findings.push({
+      ...base,
+      message: `The override for ${entry.name} in ${manifest} is no longer needed: ${list(who)} already `
+        + `${asks.length === 1 ? 'allows' : 'allow'} the installed ${list(versions)}.`,
+      action: remove,
+      details: { ...base.details, versions, askedBy: asks.map((a) => ({ by: label(a.from), range: a.range })) },
+    });
+  }
+  return findings;
 }
 
 // ---------- check entry point ----------
@@ -322,19 +409,19 @@ export const npmAuditCheck = {
       if (!advisories || typeof advisories !== 'object' || Array.isArray(advisories)) {
         throw new Error('the registry gave an unexpected answer about vulnerabilities');
       }
+      // the project's package.json: its "overrides", and for lockfile version 1 what the project itself asks for
       let manifest;
-      if (!lock.packages) {
-        try {
-          manifest = JSON.parse(await readFile(join(ctx.root, posix.dirname(lockfile), 'package.json'), 'utf8'));
-        } catch { /* without it, lockfile version 1 says nothing about what the project itself asks for */ }
-      }
-      const found = evaluate(lockfile, packages, advisories, cfg, dependencyGraph(lock, manifest));
+      try {
+        manifest = JSON.parse(await readFile(join(ctx.root, posix.dirname(lockfile), 'package.json'), 'utf8'));
+      } catch { /* none, or unreadable: nothing to say about overrides */ }
+      const graph = dependencyGraph(lock, manifest);
+      const found = evaluate(lockfile, packages, advisories, cfg, graph);
       if (found.length === 0) {
         const unique = new Set(packages.map((p) => `${p.name}@${p.version}`)).size;
         const scope = cfg.reportFrom === 'info' ? 'No known vulnerabilities' : `No known vulnerabilities of ${cfg.reportFrom} severity or above`;
         findings.push({ check: CHECK, severity: 'ok', source: 'lockfile', file: lockfile, message: `${scope} in ${unique} installed packages.` });
       }
-      findings.push(...found);
+      findings.push(...found, ...unneededOverrides(lockfile, graph, manifest?.overrides));
     }
     return findings;
   },

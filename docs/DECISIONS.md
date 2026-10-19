@@ -511,6 +511,16 @@ vulnerable package and lockfile only; grouping findings by direct dependency,
 and asking the registry which release of a direct dependency contains the
 fix, were left for later.
 
+**Report overrides that no longer do anything** (2026-10-19). Forcing a
+version with `overrides` is the fix when a dependency pins a vulnerable
+version, but nothing tells you when it can go, and a forgotten override can
+later hold a package back. The check reports, as info, overrides whose
+package every dependent already allows at the installed version, and
+overrides for packages that are not installed. Only the overrides in the
+`package.json` next to the lockfile count, as with npm, which ignores them
+elsewhere. Overrides that are still needed are not reported, to keep the
+noise down.
+
 **Severities: critical is an error, high a warning, moderate info, low not
 reported.** All three thresholds are settings. Packages used only for
 development are info at most, for the same reason as local test pages: they

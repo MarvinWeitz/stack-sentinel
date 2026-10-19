@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { bulkRequest, dependencyGraph, evaluate, firstFixedVersion, installedPackages, trace } from '../src/checks/npm-audit.js';
+import { bulkRequest, dependencyGraph, evaluate, firstFixedVersion, installedPackages, overrideEntries, trace, unneededOverrides } from '../src/checks/npm-audit.js';
 import { scan } from '../src/cli.js';
 
 const fixture = (p) => fileURLToPath(new URL(`./fixtures/${p}`, import.meta.url));
@@ -115,7 +115,7 @@ test('the action names what stands in the way of the fix', () => {
     + 'update web to a release whose dependencies allow it (or force it with an "overrides" entry in apps/orders/package.json), '
     + 'then run "npm install" in apps/orders');
   // lib's range already allows the fix: the lockfile is only stale
-  assert.equal(byName(findings, 'loose').action, 'Update loose to 2.0.5 or later (run "npm audit fix" in apps/orders)');
+  assert.equal(byName(findings, 'loose').action, 'Update loose to 2.0.5 or later: lib 1.0.0 already allows it, so only the lockfile is out of date (run "npm audit fix" in apps/orders)');
   // a bundled copy can only be replaced by the package that bundles it
   assert.equal(byName(findings, 'packed').action, 'packed is bundled inside web 1.0.0, so only a release of web that bundles packed 1.0.1 or later fixes it');
   // a direct dependency pinned in package.json
@@ -144,6 +144,57 @@ test('workspaces and lockfile version 1 are traced too', () => {
   const graph = dependencyGraph(v1, { dependencies: { router: '^1.0.0' } });
   const [old] = evaluate('package-lock.json', installedPackages(v1), madeAdvisories, policy, graph);
   assert.deepEqual(old.details.introducedBy[0].chain, ['router@1.0.0', 'vuln@1.0.0']);
+});
+
+test('reads plain and scoped overrides', () => {
+  assert.deepEqual(overrideEntries({ a: '1.0.0', '@s/b@^1': '1.2.0', c: { '.': '2.0.0', d: '3.0.0', e: { f: '1.0.0' } } }), [
+    { name: 'a', parent: null, key: '"a"' },
+    { name: '@s/b', parent: null, key: '"@s/b@^1"' },
+    { name: 'c', parent: null, key: '"c"' },
+    { name: 'd', parent: 'c', key: '"d" under "c"' },
+  ]);
+  assert.deepEqual(overrideEntries(undefined), []);
+});
+
+test('an override is reported when it no longer does anything', () => {
+  const lockOf = (range) => ({
+    lockfileVersion: 3,
+    packages: {
+      '': { dependencies: { express: '^5.0.0', other: '^1.0.0' } },
+      'node_modules/express': { version: '5.2.1', dependencies: { 'proxy-addr': range } },
+      'node_modules/other': { version: '1.0.0' },
+      'node_modules/proxy-addr': { version: '2.0.8' },
+    },
+  });
+  const check = (range, overrides) => unneededOverrides('apps/orders/package-lock.json', dependencyGraph(lockOf(range)), overrides);
+
+  // express's own range already allows what the override forced
+  const [loose] = check('^2.0.7', { 'proxy-addr': '^2.0.8' });
+  assert.equal(loose.severity, 'info');
+  assert.equal(loose.message, 'The override for proxy-addr in apps/orders/package.json is no longer needed: express 5.2.1 (asks for "^2.0.7") already allows the installed 2.0.8.');
+  assert.equal(loose.action, 'Remove "proxy-addr" from "overrides" in apps/orders/package.json, then run "npm install" in apps/orders');
+  assert.deepEqual(loose.details.askedBy, [{ by: 'express 5.2.1', range: '^2.0.7' }]);
+  assert.equal(check('^2.0.7', { express: { 'proxy-addr': '^2.0.8' } }).length, 1);
+
+  // express still pins the vulnerable version: the override is doing its job
+  assert.deepEqual(check('2.0.7', { 'proxy-addr': '^2.0.8' }), []);
+  assert.deepEqual(check('git+https://example.com/proxy-addr.git', { 'proxy-addr': '^2.0.8' }), []);
+
+  // nothing installed to override, at all or below the given parent
+  const [gone] = check('2.0.7', { 'left-pad': '1.3.0' });
+  assert.match(gone.message, /^The override for left-pad in apps\/orders\/package\.json is unused: left-pad is not installed\.$/);
+  const [elsewhere] = check('2.0.7', { other: { 'proxy-addr': '^2.0.8' } });
+  assert.match(elsewhere.message, /is unused: proxy-addr is not installed below other\.$/);
+  assert.equal(elsewhere.action, 'Remove "proxy-addr" under "other" from "overrides" in apps/orders/package.json, then run "npm install" in apps/orders');
+});
+
+test('a scan reads the overrides from the package.json next to the lockfile', async () => {
+  const report = await scan({ root: fixture('audit-overrides'), config: { checks: ['npm-audit'] }, postJsonImpl: async () => ({}) });
+  assert.deepEqual(report.findings.map((f) => [f.severity, f.source, f.message]), [
+    ['info', 'overrides', 'The override for proxy-addr in package.json is no longer needed: express 5.2.1 (asks for "^2.0.7") already allows the installed 2.0.8.'],
+    ['info', 'overrides', 'The override for path-to-regexp in package.json is unused: path-to-regexp is not installed.'],
+    ['ok', 'lockfile', 'No known vulnerabilities of moderate severity or above in 2 installed packages.'],
+  ]);
 });
 
 test('scans every lockfile, asks the registry once per lockfile, and reports a clean one as ok', async () => {

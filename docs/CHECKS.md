@@ -139,7 +139,7 @@ lockfile (for example with yarn or pnpm) are not checked.
 | --- | --- |
 | error | A vulnerability with advisory severity `critical` (`audit.errorAt`) |
 | warn | Advisory severity `high` (`audit.warnAt`) |
-| info | Advisory severity `moderate`, or any severity in a package used only for development |
+| info | Advisory severity `moderate`, or any severity in a package used only for development; an override in `package.json` that is no longer needed |
 | ok | No known vulnerabilities of `moderate` severity or above (`audit.reportFrom`) |
 
 There is one finding per vulnerable package, naming the worst advisory and
@@ -167,3 +167,20 @@ The action depends on what the version ranges along the way allow:
 | A dependency pins it below the fix | Update the direct dependency that brings it in, or force the version with `overrides` in `package.json` |
 | It is bundled inside another package | Only a new release of that package fixes it |
 | No fixed version is known | Consider replacing it, or the direct dependency that brings it in |
+
+An `overrides` entry in `package.json` forces a version, and stays in force
+after the reason for it is gone. The check reads the `overrides` of the
+`package.json` next to each lockfile and reports an override as info when it
+no longer does anything, with the action to remove it:
+
+- **No longer needed:** every package that asks for the overridden package
+  already allows the installed version. The lockfile records the ranges the
+  packages declare themselves, before any override, so removing the override
+  leaves the same version installed.
+- **Unused:** the overridden package is not installed at all (or, for an
+  override scoped under a parent, not below that parent).
+
+Plain overrides (`"pkg": "1.2.3"`, also `"pkg@range": …`) and overrides
+scoped one level under a parent (`"parent": { "pkg": "1.2.3" }`) are judged;
+deeper nesting is ignored. A range the check cannot read, such as a git URL,
+counts as still needing the override.
