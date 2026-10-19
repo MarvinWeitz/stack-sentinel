@@ -28,8 +28,8 @@ steps:
       # Defaults, used unless the pipeline has a variable of the same name.
       # "#stable" follows the latest tested release, so the tool stays current without anyone
       # editing this file. To stay on one release, set SENTINEL_SOURCE to e.g.
-      # github:MarvinWeitz/stack-sentinel#v0.2.0
-      export SENTINEL_SOURCE="${SENTINEL_SOURCE:-github:MarvinWeitz/stack-sentinel#stable}"
+      # github:cbs-consulting/stack-sentinel#v0.2.0
+      export SENTINEL_SOURCE="${SENTINEL_SOURCE:-github:cbs-consulting/stack-sentinel#stable}"
       export SENTINEL_PATH="${SENTINEL_PATH:-.}"   # folder to scan
       export SENTINEL_PROJECT="${SENTINEL_PROJECT:-$(Build.Repository.Name)}"
       npx --yes "$SENTINEL_SOURCE" "$SENTINEL_PATH"

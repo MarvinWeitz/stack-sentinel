@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
 jobs:
   test:
+    name: Test features (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -18,6 +19,16 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
+  test-summary:
+    # The single check that branch protection requires, so the rule does not have to list
+    # every Node version in the matrix. always() makes it run, and fail, when a test job
+    # fails; a skipped required check would count as passing.
+    name: Test features
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.test.result }}" = "success"
   live-feed:
     # Checks that the real feeds still have the expected format. Needs the publishers'
     # servers, so it must not block pushes or pull requests.

@@ -9,13 +9,13 @@ No dependencies; needs Node.js 22 or newer.
 ## Usage
 
 ```sh
-npx github:MarvinWeitz/stack-sentinel#stable <path-to-project>
+npx github:cbs-consulting/stack-sentinel#stable <path-to-project>
 
 # notify a Teams channel when there is at least a warning
-SENTINEL_WEBHOOK_URL=https://... npx github:MarvinWeitz/stack-sentinel#stable . --project "Customer A / Orders app"
+SENTINEL_WEBHOOK_URL=https://... npx github:cbs-consulting/stack-sentinel#stable . --project "Customer A / Orders app"
 
 # send the raw JSON report to a customer-owned endpoint instead
-npx github:MarvinWeitz/stack-sentinel#stable . --webhook https://customer.example/hooks/sentinel --format json
+npx github:cbs-consulting/stack-sentinel#stable . --webhook https://customer.example/hooks/sentinel --format json
 ```
 
 Run `stack-sentinel --help` for the flags and see [Settings](#settings) for

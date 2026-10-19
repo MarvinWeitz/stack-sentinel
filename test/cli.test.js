@@ -135,12 +135,12 @@ test('--version prints the package version', async () => {
 
 test('README usage and pipeline examples install from the stable branch by default', async () => {
   const readme = await readFile(path('../README.md'), 'utf8');
-  const installs = [...readme.matchAll(/npx(?: --yes)? github:MarvinWeitz\/stack-sentinel(#[\w.]+)?/g)].map((m) => m[1]);
+  const installs = [...readme.matchAll(/npx(?: --yes)? github:cbs-consulting\/stack-sentinel(#[\w.]+)?/g)].map((m) => m[1]);
   assert.ok(installs.length > 0);
   assert.deepEqual([...new Set(installs)], ['#stable']);
   for (const file of ['../examples/github-actions.yml', '../examples/azure-pipelines.yml']) {
     const text = await readFile(path(file), 'utf8');
-    assert.match(text, /(SENTINEL_SOURCE:.*|SENTINEL_SOURCE:-)github:MarvinWeitz\/stack-sentinel#stable['"}]/, `${file} does not default to #stable`);
+    assert.match(text, /(SENTINEL_SOURCE:.*|SENTINEL_SOURCE:-)github:cbs-consulting\/stack-sentinel#stable['"}]/, `${file} does not default to #stable`);
   }
 });
 

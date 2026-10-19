@@ -20,8 +20,8 @@ jobs:
     env:
       # Where the tool is installed from. "#stable" follows the latest tested release, so
       # the tool stays current without anyone editing this file. To stay on one release
-      # instead, set the variable SENTINEL_SOURCE to e.g. github:MarvinWeitz/stack-sentinel#v0.2.0
-      SENTINEL_SOURCE: ${{ vars.SENTINEL_SOURCE || 'github:MarvinWeitz/stack-sentinel#stable' }}
+      # instead, set the variable SENTINEL_SOURCE to e.g. github:cbs-consulting/stack-sentinel#v0.2.0
+      SENTINEL_SOURCE: ${{ vars.SENTINEL_SOURCE || 'github:cbs-consulting/stack-sentinel#stable' }}
       SENTINEL_PATH: ${{ vars.SENTINEL_PATH || '.' }} # folder to scan
       SENTINEL_PROJECT: ${{ vars.SENTINEL_PROJECT || github.repository }}
     steps:
