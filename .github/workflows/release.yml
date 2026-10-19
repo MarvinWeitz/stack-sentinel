@@ -1,11 +1,15 @@
 name: Release
-# Publishes a tested commit to npm and as a GitHub release. Started by hand from the
-# Actions tab.
+# Stages a tested commit on npm and publishes it as a GitHub release. Started by hand from
+# the Actions tab. The npm version goes live only when a maintainer approves it with 2FA:
+# on npmjs.com (the package's staged versions) or with `npm stage approve <stage-id>`.
 #
 # npm accepts the upload because this workflow is registered as the package's trusted
 # publisher on npmjs.com (package settings -> Trusted publishing: GitHub Actions,
-# organization cbs-consulting, repository stack-sentinel, workflow release.yml), so no
-# npm token is stored here. Every step can be run again: whatever was already done is skipped.
+# organization cbs-consulting, repository stack-sentinel, workflow release.yml, permission
+# "stage publish"), so no npm token is stored here.
+#
+# The workflow can be run again; whatever was already done is skipped. A version that is
+# staged but not yet approved does not count as done, so approve or reject it first.
 on:
   workflow_dispatch:
     inputs:
@@ -31,7 +35,7 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@11 # trusted publishing needs npm 11.5.1 or newer
+      - run: npm install -g npm@11 # staged publishing needs npm 11.15.0 or newer
       - run: npm test
       - run: npm run test:live
       - name: Check that this commit may be released
@@ -75,6 +79,11 @@ jobs:
             echo "::notice::$VERSION is already released from this commit; nothing to do."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
+      - name: Stage on npm
+        if: ${{ !inputs.dry_run && steps.check.outputs.skip != 'true' && steps.check.outputs.npm_done != 'true' }}
+        run: |
+          npm stage publish --provenance
+          echo "::notice::Version ${{ steps.check.outputs.version }} is staged on npm. It goes live when a maintainer approves it: npmjs.com -> the package -> staged versions, or npm stage approve <stage-id>."
       - name: Publish the GitHub release
         if: ${{ !inputs.dry_run && steps.check.outputs.skip != 'true' && steps.check.outputs.tag_exists != 'true' }}
         env:
@@ -82,11 +91,6 @@ jobs:
           SHA: ${{ steps.check.outputs.sha }}
           VERSION: ${{ steps.check.outputs.version }}
         run: gh release create "v$VERSION" --target "$SHA" --title "v$VERSION" --generate-notes
-      - name: Publish to npm
-        if: ${{ !inputs.dry_run && steps.check.outputs.skip != 'true' && steps.check.outputs.npm_done != 'true' }}
-        run: |
-          npm publish --provenance
-          echo "::notice::Version ${{ steps.check.outputs.version }} is released: npm latest and GitHub release v${{ steps.check.outputs.version }}."
       - name: Dry run summary
         if: ${{ inputs.dry_run && steps.check.outputs.skip != 'true' }}
         run: echo "::notice::Dry run passed. Version ${{ steps.check.outputs.version }} could be released; nothing was changed."

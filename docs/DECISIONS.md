@@ -271,6 +271,14 @@ workflow steps that moved it were removed. npm accepts the
 upload through trusted publishing (OIDC), so no npm token is stored in the
 repository. The package ships only `bin/` and `src/`.
 
+**2026-10-19: Releases are staged on npm and approved by a person.** The
+workflow runs `npm stage publish`; the version goes live only after a
+maintainer approves it with 2FA. Every pipeline follows `@latest`, so a bad
+or compromised release would reach all customer projects on their next run;
+the approval is the last point where a person can stop it. The trusted
+publisher on npm allows staging only, so the workflow cannot make a version
+live by itself even if it were misused.
+
 **Minimum Node.js 22.** Node.js 20 reached end of life in April 2026. The
 tool's own `node-version` check flagged this repository.
 

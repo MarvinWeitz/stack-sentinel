@@ -1,8 +1,17 @@
 {
   "name": "@cbs-consulting/stack-sentinel",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Scans projects for outdated or unsupported stack versions and reports findings to a webhook.",
-  "keywords": ["sap", "ui5", "cap", "cloud-foundry", "nodejs", "end-of-life", "monitoring", "teams"],
+  "keywords": [
+    "sap",
+    "ui5",
+    "cap",
+    "cloud-foundry",
+    "nodejs",
+    "end-of-life",
+    "monitoring",
+    "teams"
+  ],
   "homepage": "https://github.com/cbs-consulting/stack-sentinel#readme",
   "bugs": "https://github.com/cbs-consulting/stack-sentinel/issues",
   "repository": {

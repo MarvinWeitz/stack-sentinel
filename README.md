@@ -306,15 +306,22 @@ Write `@latest` out with `npx`. Without it, `npx` can keep using a copy it
 downloaded earlier, which matters on build agents that are not wiped
 between runs.
 
-Releases are published by the "Release" workflow in the Actions tab, which
+Releases are made by the "Release" workflow in the Actions tab, which
 
 1. runs the tests and the live feed tests on the commit to release,
 2. requires a higher version in `package.json` than the latest one on npm,
-3. publishes that commit as the GitHub release `v<version>`, and
-4. publishes it to npm, with a provenance statement that ties the package to
-   this repository and commit.
+3. stages it on npm, with a provenance statement that ties the package to
+   this repository and commit, and
+4. publishes that commit as the GitHub release `v<version>`.
 
-It has a "dry run" option that does steps 1 and 2 and changes nothing.
+A staged version is not installable yet. It goes live, and becomes
+`@latest`, when a maintainer approves it with two-factor authentication: on
+npmjs.com under the package's staged versions, or with
+`npm stage approve <stage-id>`. Every release that reaches customer
+pipelines has therefore been looked at by a person.
+
+The workflow has a "dry run" option that does steps 1 and 2 and changes
+nothing.
 
 `stack-sentinel --version` prints the running version. Every report and
 heartbeat carries it as `toolVersion`, and the Teams card shows it, so you can
