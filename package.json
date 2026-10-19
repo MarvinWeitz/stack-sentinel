@@ -1,6 +1,6 @@
 {
   "name": "@cbs-consulting/stack-sentinel",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Scans projects for outdated or unsupported stack versions and reports findings to a webhook.",
   "keywords": [
     "sap",
