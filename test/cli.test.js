@@ -347,7 +347,8 @@ test('the vulnerability check asks the registry over HTTP and reports with actio
   const r = await run([path('./fixtures/audit-app'), '--checks', 'npm-audit']);
   assert.equal(r.code, 1); // minimist has a critical advisory
   assert.match(r.stdout, /\[error\] minimist 1\.2\.5 has a known vulnerability, the worst critical/);
-  assert.match(r.stdout, /→ Update minimist to 1\.2\.6 or later \(run "npm audit fix" in the project folder\)/);
+  assert.match(r.stdout, /→ Update minimist to 1\.2\.6 or later, which package\.json \(asks for "1\.2\.5"\) does not allow: raise it in package\.json, then run "npm install" in the project folder/);
+  assert.match(r.stdout, /\[warn \] qs 6\.7\.0 has .* It comes in through express 4\.17\.1 → qs 6\.7\.0\./);
 });
 
 test('a heartbeat service that only accepts GET: the error says why, and GET can be chosen', async () => {

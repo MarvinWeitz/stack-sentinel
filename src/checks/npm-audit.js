@@ -37,6 +37,96 @@ export function installedPackages(lock) {
   return out;
 }
 
+/**
+ * The dependency graph a package-lock.json describes: which installed copy every declared
+ * dependency resolves to, found the way Node.js finds it (the nearest node_modules folder
+ * upwards). manifest is the project's package.json, needed only for lockfile version 1,
+ * which does not record the project's own dependencies.
+ * Returns { nodes, roots, parents }: nodes by lockfile path as { path, name, version, bundled },
+ * roots the paths of the project and its workspace folders, and parents by the path of the
+ * installed copy as [{ from, range, dev }], dev when declared under devDependencies.
+ */
+export function dependencyGraph(lock, manifest) {
+  const nodes = new Map();
+  const roots = new Set();
+  const links = new Set();
+  const declared = (meta, withDev) => [
+    ...Object.entries({ ...meta?.peerDependencies, ...meta?.optionalDependencies, ...meta?.dependencies })
+      .map(([name, range]) => ({ name, range, dev: false })),
+    ...Object.entries(withDev ? meta?.devDependencies ?? {} : {}).map(([name, range]) => ({ name, range, dev: true })),
+  ];
+  if (lock?.packages) {
+    for (const [path, meta] of Object.entries(lock.packages)) {
+      if (meta?.link) { links.add(path); continue; }
+      const installed = path.includes('node_modules/');
+      if (!installed) roots.add(path);
+      const name = installed ? meta?.name ?? path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length) : meta?.name;
+      nodes.set(path, { path, name, version: meta?.version, bundled: meta?.inBundle === true, requires: declared(meta, !installed) });
+    }
+  } else {
+    // lockfile version 1: the nesting of "dependencies" is the folder layout
+    roots.add('');
+    nodes.set('', { path: '', name: manifest?.name, version: manifest?.version, bundled: false, requires: declared(manifest, true) });
+    const walk = (deps, prefix) => {
+      for (const [name, meta] of Object.entries(deps ?? {})) {
+        const path = `${prefix}node_modules/${name}`;
+        const requires = Object.entries(meta?.requires ?? {}).map(([dep, range]) => ({ name: dep, range, dev: false }));
+        nodes.set(path, { path, name, version: meta?.version, bundled: meta?.bundled === true, requires });
+        walk(meta?.dependencies, `${path}/`);
+      }
+    };
+    walk(lock?.dependencies, '');
+  }
+  const resolve = (from, name) => {
+    for (let dir = from; ; dir = posix.dirname(dir) === '.' ? '' : posix.dirname(dir)) {
+      const path = dir ? `${dir}/node_modules/${name}` : `node_modules/${name}`;
+      if (links.has(path)) return null; // a workspace folder, which is a root of its own
+      if (nodes.has(path) && !roots.has(path)) return path;
+      if (!dir) return null;
+    }
+  };
+  const parents = new Map();
+  for (const node of nodes.values()) {
+    for (const dep of node.requires) {
+      const to = resolve(node.path, dep.name);
+      if (!to) continue; // not installed: optional, a peer nobody provides, or trimmed away
+      if (!parents.has(to)) parents.set(to, []);
+      parents.get(to).push({ from: node.path, range: dep.range, dev: dep.dev });
+    }
+  }
+  return { nodes, roots, parents };
+}
+
+/**
+ * How the given installed copies (lockfile paths) are reached from the project: for every
+ * direct dependency they come in through, the shortest chain of paths from it down to one
+ * of them, nearest first. Returns [{ root, dev, chain }]; a chain of one means the copy is
+ * itself a direct dependency.
+ */
+export function trace(graph, targets) {
+  const next = new Map(targets.map((t) => [t, null]));
+  const queue = [...targets];
+  const seen = new Set();
+  const found = [];
+  for (let i = 0; i < queue.length; i++) {
+    const path = queue[i];
+    for (const { from, dev } of graph.parents.get(path) ?? []) {
+      if (graph.roots.has(from)) {
+        const key = `${from}\u0000${path}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const chain = [path];
+        while (next.get(chain.at(-1))) chain.push(next.get(chain.at(-1)));
+        found.push({ root: from, dev, chain });
+      } else if (!next.has(from)) {
+        next.set(from, path);
+        queue.push(from);
+      }
+    }
+  }
+  return found;
+}
+
 /** Asks the registry which of the given versions have known vulnerabilities. */
 export function bulkRequest(packages) {
   const body = {};
@@ -49,9 +139,11 @@ export function bulkRequest(packages) {
 
 /**
  * Turns the registry's answer into one finding per vulnerable installed package.
- * cfg: { reportFrom, warnAt, errorAt } as advisory severities.
+ * cfg: { reportFrom, warnAt, errorAt } as advisory severities. graph (from dependencyGraph)
+ * is optional; with it, findings say which direct dependencies bring a package in, and the
+ * action takes the version ranges along the way into account.
  */
-export function evaluate(lockfile, packages, advisories, cfg) {
+export function evaluate(lockfile, packages, advisories, cfg, graph) {
   const findings = [];
   // A package can be installed several times; it counts as development-only if every copy is.
   const unique = new Map();
@@ -79,18 +171,20 @@ export function evaluate(lockfile, packages, advisories, cfg) {
     const titles = [...new Set(hits.map((a) => a.title))];
     const count = hits.length === 1 ? 'a known vulnerability' : `${hits.length} known vulnerabilities`;
     const devNote = pkg.dev ? ' (development dependency)' : '';
+    const origin = graph ? explain(graph, lockfile, pkg) : null;
     findings.push({
       check: CHECK,
       severity,
       source: 'lockfile',
       file: lockfile,
       version: pkg.version,
-      message: `${pkg.name} ${pkg.version}${devNote} has ${count}, the worst ${worst.severity}: ${titles.slice(0, 2).join('; ')}${titles.length > 2 ? `; and ${titles.length - 2} more` : ''}.`,
-      action: fixAction(pkg, version, hits, lockfile),
+      message: `${pkg.name} ${pkg.version}${devNote} has ${count}, the worst ${worst.severity}: ${titles.slice(0, 2).join('; ')}${titles.length > 2 ? `; and ${titles.length - 2} more` : ''}.${origin?.message ?? ''}`,
+      action: origin ? graphFixAction(origin, pkg, firstFixedVersion(version, hits), lockfile) : fixAction(pkg, version, hits, lockfile),
       details: {
         package: pkg.name,
         severity: worst.severity,
         advisories: hits.map((a) => ({ id: a.id, title: a.title, severity: a.severity, url: a.url, vulnerableVersions: a.vulnerable_versions })),
+        ...(origin ? { introducedBy: origin.introducedBy } : {}),
       },
     });
   }
@@ -115,8 +209,88 @@ export function firstFixedVersion(version, hits) {
   return fixed.join('.');
 }
 
+const folder = (lockfile) => (posix.dirname(lockfile) === '.' ? 'the project folder' : posix.dirname(lockfile));
+const manifestOf = (lockfile, root) => posix.join(posix.dirname(lockfile), root, 'package.json');
+const list = (items) => (items.length <= 2 ? items.join(' and ') : `${items.slice(0, 2).join(', ')} and ${items.length - 2} more`);
+const unique = (items) => [...new Set(items)];
+
+/** Where the installed copies of a vulnerable package sit in the graph, and what brings them in. */
+function explain(graph, lockfile, pkg) {
+  const label = (path) => `${graph.nodes.get(path).name} ${graph.nodes.get(path).version}`;
+  const targets = [...graph.nodes.values()]
+    .filter((n) => !graph.roots.has(n.path) && n.name === pkg.name && n.version === pkg.version)
+    .map((n) => n.path);
+  const routes = trace(graph, targets);
+  const via = routes.filter((r) => r.chain.length > 1);
+  const direct = routes.length > via.length;
+  let message = '';
+  if (via.length > 0) {
+    const others = via.length - 1;
+    message = ` It ${direct ? 'is also pulled in' : 'comes in'} through ${via[0].chain.map(label).join(' → ')}`
+      + `${others ? `, and through ${others} other direct ${others === 1 ? 'dependency' : 'dependencies'}` : ''}.`;
+  }
+  const introducedBy = routes.map((r) => {
+    const head = graph.nodes.get(r.chain[0]);
+    return {
+      package: head.name, version: head.version, dev: r.dev, manifest: manifestOf(lockfile, r.root),
+      chain: r.chain.map((p) => `${graph.nodes.get(p).name}@${graph.nodes.get(p).version}`),
+    };
+  });
+  return { graph, targets, routes, label, message, introducedBy };
+}
+
+/**
+ * The action, knowing the graph: "npm audit fix" when every package that asks for the
+ * vulnerable one allows the fixed version; otherwise who stands in the way and what to
+ * change instead.
+ */
+function graphFixAction({ graph, targets, label }, pkg, fixed, lockfile) {
+  const where = folder(lockfile);
+  // the direct dependencies, by name, that the given installed copies come in through
+  const owners = (paths) => unique(trace(graph, paths).map((r) => graph.nodes.get(r.chain[0]).name));
+  if (!fixed) {
+    const others = owners(targets).filter((name) => name !== pkg.name);
+    return `No fixed version of ${pkg.name} is known yet; check the advisories, and consider replacing it`
+      + `${others.length ? ` or ${list(others)}, which bring${others.length === 1 ? 's' : ''} it in` : ''}`;
+  }
+  const bundlers = unique(targets.filter((t) => graph.nodes.get(t).bundled).map((t) => t.slice(0, t.lastIndexOf('/node_modules/'))));
+  if (bundlers.length > 0) {
+    const names = unique(bundlers.map((b) => graph.nodes.get(b).name));
+    const through = owners(bundlers).filter((name) => !names.includes(name));
+    return `${pkg.name} is bundled inside ${list(bundlers.map(label))}, so only a release of ${list(names)} that bundles `
+      + `${pkg.name} ${fixed} or later fixes it${through.length ? ` (${list(names)} comes in through ${list(through)})` : ''}`;
+  }
+  const target = parts(fixed);
+  const blockers = [];
+  for (const path of targets) {
+    for (const edge of graph.parents.get(path) ?? []) {
+      const range = parseRange(edge.range);
+      if (range && !satisfies(range, target) && !blockers.some((b) => b.from === edge.from && b.range === edge.range)) blockers.push(edge);
+    }
+  }
+  if (blockers.length === 0) {
+    return `Update ${pkg.name} to ${fixed} or later (run "npm audit fix" in ${where})`;
+  }
+  const who = blockers.map((b) => `${graph.roots.has(b.from) ? manifestOf(lockfile, b.from) : label(b.from)} (asks for "${b.range}")`);
+  const fromManifest = unique(blockers.filter((b) => graph.roots.has(b.from)).map((b) => manifestOf(lockfile, b.from)));
+  const inner = blockers.filter((b) => !graph.roots.has(b.from)).map((b) => b.from);
+  const steps = [];
+  if (fromManifest.length) steps.push(`raise it in ${list(fromManifest)}`);
+  if (inner.length) {
+    const askers = unique(inner.map((p) => graph.nodes.get(p).name));
+    const top = owners(inner);
+    const update = top.length ? top : askers;
+    steps.push(update.every((name) => askers.includes(name))
+      ? `update ${list(update)} to a release that allows it`
+      : `update ${list(update)} to a release whose dependencies allow it`);
+  }
+  const force = inner.length ? ` (or force it with an "overrides" entry in ${manifestOf(lockfile, '')})` : '';
+  return `Update ${pkg.name} to ${fixed} or later, which ${list(who)} ${blockers.length === 1 ? 'does' : 'do'} not allow: `
+    + `${steps.join(' and ')}${force}, then run "npm install" in ${where}`;
+}
+
 function fixAction(pkg, version, hits, lockfile) {
-  const where = posix.dirname(lockfile) === '.' ? 'the project folder' : posix.dirname(lockfile);
+  const where = folder(lockfile);
   const fixed = firstFixedVersion(version, hits);
   if (!fixed) return `No fixed version of ${pkg.name} is known yet; check the advisories, and consider replacing it`;
   return `Update ${pkg.name} to ${fixed} or later (run "npm audit fix" in ${where})`;
@@ -148,7 +322,13 @@ export const npmAuditCheck = {
       if (!advisories || typeof advisories !== 'object' || Array.isArray(advisories)) {
         throw new Error('the registry gave an unexpected answer about vulnerabilities');
       }
-      const found = evaluate(lockfile, packages, advisories, cfg);
+      let manifest;
+      if (!lock.packages) {
+        try {
+          manifest = JSON.parse(await readFile(join(ctx.root, posix.dirname(lockfile), 'package.json'), 'utf8'));
+        } catch { /* without it, lockfile version 1 says nothing about what the project itself asks for */ }
+      }
+      const found = evaluate(lockfile, packages, advisories, cfg, dependencyGraph(lock, manifest));
       if (found.length === 0) {
         const unique = new Set(packages.map((p) => `${p.name}@${p.version}`)).size;
         const scope = cfg.reportFrom === 'info' ? 'No known vulnerabilities' : `No known vulnerabilities of ${cfg.reportFrom} severity or above`;

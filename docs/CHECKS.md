@@ -146,5 +146,24 @@ There is one finding per vulnerable package, naming the worst advisory and
 the first version that fixes all of them. The advisories, with links, are in
 the JSON report under `details.advisories`. `npm audit` attributes a
 dependency's vulnerability to the package that pulls it in as well; this
-check names only the package that is actually vulnerable, so its counts can
+check counts only the package that is actually vulnerable, so its counts can
 be lower.
+
+When the vulnerable package is not one of your own dependencies, the finding
+says which of them brings it in, with the shortest chain (for example
+`It comes in through express 4.17.1 → body-parser 1.19.0.`). Every direct
+dependency it comes in through, with its chain, is in the JSON report under
+`details.introducedBy`. The check works this out from the lockfile, resolving
+each dependency the way Node.js does. For lockfile version 1, which does not
+record the project's own dependencies, it reads the `package.json` next to
+the lockfile.
+
+The action depends on what the version ranges along the way allow:
+
+| Situation | Action |
+| --- | --- |
+| Every package that asks for it allows the fixed version | Run `npm audit fix`: the lockfile is only out of date |
+| `package.json` pins it below the fix | Raise it in `package.json` |
+| A dependency pins it below the fix | Update the direct dependency that brings it in, or force the version with `overrides` in `package.json` |
+| It is bundled inside another package | Only a new release of that package fixes it |
+| No fixed version is known | Consider replacing it, or the direct dependency that brings it in |

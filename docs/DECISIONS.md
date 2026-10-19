@@ -500,6 +500,17 @@ vulnerable, so its counts can be lower than `npm audit`'s. Checked against
 `npm audit` on a project with known-vulnerable packages: the same critical
 and high packages.
 
+**Say what brings a package in, and what stands in the way of the fix**
+(2026-10-19). Naming only the vulnerable package left findings about packages
+nobody declared. The check now builds the dependency graph from the lockfile,
+traces each vulnerable package back to the direct dependencies that bring it
+in, and compares the fixed version with the ranges along the way: "npm audit
+fix" when they allow it, otherwise the `package.json` entry or the direct
+dependency to update, or an `overrides` entry. Still one finding per
+vulnerable package and lockfile only; grouping findings by direct dependency,
+and asking the registry which release of a direct dependency contains the
+fix, were left for later.
+
 **Severities: critical is an error, high a warning, moderate info, low not
 reported.** All three thresholds are settings. Packages used only for
 development are info at most, for the same reason as local test pages: they
