@@ -1,11 +1,22 @@
 {
-  "name": "stack-sentinel",
+  "name": "@cbs-consulting/stack-sentinel",
   "version": "0.3.0",
   "description": "Scans projects for outdated or unsupported stack versions and reports findings to a webhook.",
+  "keywords": ["sap", "ui5", "cap", "cloud-foundry", "nodejs", "end-of-life", "monitoring", "teams"],
+  "homepage": "https://github.com/cbs-consulting/stack-sentinel#readme",
+  "bugs": "https://github.com/cbs-consulting/stack-sentinel/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cbs-consulting/stack-sentinel.git"
+  },
   "type": "module",
   "bin": {
     "stack-sentinel": "bin/stack-sentinel.js"
   },
+  "files": [
+    "bin/",
+    "src/"
+  ],
   "scripts": {
     "test": "node --test",
     "test:live": "node --test live/feed.live.js",
@@ -13,6 +24,9 @@
   },
   "engines": {
     "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "license": "Apache-2.0"
 }

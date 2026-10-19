@@ -1,0 +1,92 @@
+name: Release
+# Publishes a tested commit to npm and as a GitHub release. Started by hand from the
+# Actions tab.
+#
+# npm accepts the upload because this workflow is registered as the package's trusted
+# publisher on npmjs.com (package settings -> Trusted publishing: GitHub Actions,
+# organization cbs-consulting, repository stack-sentinel, workflow release.yml), so no
+# npm token is stored here. Every step can be run again: whatever was already done is skipped.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to release
+        default: main
+      dry_run:
+        description: Only run the checks, change nothing
+        type: boolean
+        default: false
+permissions:
+  contents: write # the GitHub release
+  id-token: write # npm trusted publishing and provenance
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@11 # trusted publishing needs npm 11.5.1 or newer
+      - run: npm test
+      - run: npm run test:live
+      - name: Check that this commit may be released
+        id: check
+        run: |
+          SHA=$(git rev-parse HEAD)
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Candidate: $SHA ($NAME $VERSION)"
+          newer() { node -e 'const [a, b] = process.argv.slice(1).map((v) => v.split(".").map(Number)); process.exit((a[0] - b[0] || a[1] - b[1] || a[2] - b[2]) > 0 ? 0 : 1)' "$1" "$2"; }
+          DONE=0
+
+          # npm: every release needs its own, higher version, because reports identify the tool by it
+          if PUBLISHED=$(npm view "$NAME@$VERSION" gitHead 2>/dev/null) && [ -n "$(npm view "$NAME@$VERSION" version 2>/dev/null)" ]; then
+            if [ "$PUBLISHED" != "$SHA" ]; then
+              echo "::error::$NAME $VERSION is already on npm, built from ${PUBLISHED:-another commit}. Raise the version in package.json."
+              exit 1
+            fi
+            echo "$VERSION is already on npm from this commit."
+            echo "npm_done=true" >> "$GITHUB_OUTPUT"; DONE=$((DONE + 1))
+          else
+            LATEST=$(npm view "$NAME" version 2>/dev/null || true)
+            if [ -n "$LATEST" ] && ! newer "$VERSION" "$LATEST"; then
+              echo "::error::package.json says $VERSION, and the latest version on npm is $LATEST. Raise the version before releasing."
+              exit 1
+            fi
+            echo "npm: ${LATEST:-(not published yet)} -> $VERSION"
+          fi
+
+          # GitHub release
+          TAGGED=$(git ls-remote --tags origin "refs/tags/v$VERSION^{}" "refs/tags/v$VERSION" | tail -1 | cut -f1)
+          if [ -n "$TAGGED" ] && [ "$TAGGED" != "$SHA" ]; then
+            echo "::error::The tag v$VERSION already exists and points at a different commit ($TAGGED)."
+            exit 1
+          fi
+          if [ -n "$TAGGED" ]; then echo "tag_exists=true" >> "$GITHUB_OUTPUT"; DONE=$((DONE + 1)); fi
+
+          if [ "$DONE" = 2 ]; then
+            echo "::notice::$VERSION is already released from this commit; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish the GitHub release
+        if: ${{ !inputs.dry_run && steps.check.outputs.skip != 'true' && steps.check.outputs.tag_exists != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.check.outputs.sha }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: gh release create "v$VERSION" --target "$SHA" --title "v$VERSION" --generate-notes
+      - name: Publish to npm
+        if: ${{ !inputs.dry_run && steps.check.outputs.skip != 'true' && steps.check.outputs.npm_done != 'true' }}
+        run: |
+          npm publish --provenance
+          echo "::notice::Version ${{ steps.check.outputs.version }} is released: npm latest and GitHub release v${{ steps.check.outputs.version }}."
+      - name: Dry run summary
+        if: ${{ inputs.dry_run && steps.check.outputs.skip != 'true' }}
+        run: echo "::notice::Dry run passed. Version ${{ steps.check.outputs.version }} could be released; nothing was changed."

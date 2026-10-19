@@ -256,6 +256,21 @@ permitted to create tags or releases and does not start it.
 is at 0.3.0: it adds the message saying why no notification was sent, and
 the per-finding actions.
 
+**2026-10-19: Published to npm as `@cbs-consulting/stack-sentinel`; pipelines
+install `@latest` by default.** This replaces the `stable` branch and the
+`github:` install. An npm package installs faster than a git checkout,
+pins with an ordinary version (`@0.3.0`), and carries a provenance statement
+that ties it to this repository and commit. The scope matches the company's
+other npm packages. `@latest` plays the role `stable` had: it changes only
+when a release is published, and only through the "Release" workflow
+(formerly "Promote to stable"), which keeps the same checks and now requires
+a version higher than the latest one on npm. `@latest` is written out
+because `npx` without a version can reuse a copy cached on the build agent.
+No pipeline installed from `stable` any more, so the branch and the
+workflow steps that moved it were removed. npm accepts the
+upload through trusted publishing (OIDC), so no npm token is stored in the
+repository. The package ships only `bin/` and `src/`.
+
 **Minimum Node.js 22.** Node.js 20 reached end of life in April 2026. The
 tool's own `node-version` check flagged this repository.
 

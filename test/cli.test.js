@@ -133,14 +133,18 @@ test('--version prints the package version', async () => {
   assert.equal(r.stdout.trim(), pkg.version);
 });
 
-test('README usage and pipeline examples install from the stable branch by default', async () => {
+test('README usage and pipeline examples install the latest npm release by default', async () => {
+  const pkg = JSON.parse(await readFile(path('../package.json'), 'utf8'));
+  const name = pkg.name.replace(/[/.]/g, '\\$&');
   const readme = await readFile(path('../README.md'), 'utf8');
-  const installs = [...readme.matchAll(/npx(?: --yes)? github:cbs-consulting\/stack-sentinel(#[\w.]+)?/g)].map((m) => m[1]);
+  const installs = [...readme.matchAll(new RegExp(`npx(?: --yes)? ${name}(@[\\w.]+)?`, 'g'))].map((m) => m[1]);
   assert.ok(installs.length > 0);
-  assert.deepEqual([...new Set(installs)], ['#stable']);
-  for (const file of ['../examples/github-actions.yml', '../examples/azure-pipelines.yml']) {
+  assert.deepEqual([...new Set(installs)], ['@latest']);
+  for (const file of ['../README.md', '../examples/github-actions.yml', '../examples/azure-pipelines.yml']) {
     const text = await readFile(path(file), 'utf8');
-    assert.match(text, /(SENTINEL_SOURCE:.*|SENTINEL_SOURCE:-)github:cbs-consulting\/stack-sentinel#stable['"}]/, `${file} does not default to #stable`);
+    assert.doesNotMatch(text, /github:[\w-]+\/stack-sentinel/, `${file} still installs from GitHub`);
+    if (file === '../README.md') continue;
+    assert.match(text, new RegExp(`(SENTINEL_SOURCE:.*|SENTINEL_SOURCE:-)${name}@latest['"}]`), `${file} does not default to @latest`);
   }
 });
 

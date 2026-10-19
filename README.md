@@ -6,7 +6,7 @@
 
 **Know when a project's stack goes out of support, before it breaks.**
 
-[![CI](https://github.com/cbs-consulting/stack-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/cbs-consulting/stack-sentinel/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@cbs-consulting/stack-sentinel?logo=npm)](https://www.npmjs.com/package/@cbs-consulting/stack-sentinel)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-339933?logo=nodedotjs&logoColor=white)](package.json)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-0F4C5C)](package.json)
@@ -26,14 +26,17 @@ No dependencies; needs Node.js 22 or newer.
 ## 🚀 Quick start
 
 ```sh
-npx github:cbs-consulting/stack-sentinel#stable <path-to-project>
+npx @cbs-consulting/stack-sentinel@latest <path-to-project>
 
 # notify a Teams channel when there is at least a warning
-SENTINEL_WEBHOOK_URL=https://... npx github:cbs-consulting/stack-sentinel#stable . --project "Customer A / Orders app"
+SENTINEL_WEBHOOK_URL=https://... npx @cbs-consulting/stack-sentinel@latest . --project "Customer A / Orders app"
 
 # send the raw JSON report to a customer-owned endpoint instead
-npx github:cbs-consulting/stack-sentinel#stable . --webhook https://customer.example/hooks/sentinel --format json
+npx @cbs-consulting/stack-sentinel@latest . --webhook https://customer.example/hooks/sentinel --format json
 ```
+
+To use it often, install it once with `npm install -g @cbs-consulting/stack-sentinel`
+and run `stack-sentinel` instead.
 
 Run `stack-sentinel --help` for the flags and see [Settings](#settings) for
 everything that can be changed. Exit code is `1` when a finding
@@ -290,23 +293,26 @@ the gap.
 
 ## 📌 Releases
 
-There are two ways to install, chosen by what follows the `#`:
+stack-sentinel is published to npm as
+[`@cbs-consulting/stack-sentinel`](https://www.npmjs.com/package/@cbs-consulting/stack-sentinel).
+What follows the package name chooses the release:
 
-| Install from | What you get | Use it for |
+| Install | What you get | Use it for |
 | --- | --- | --- |
-| `#stable` | The latest tested release; changes when a new release is promoted | Most projects, and any project nobody will maintain: the tool stays current without anyone editing the pipeline |
-| `#v0.2.0` (a release tag) | Exactly that release, until someone changes the tag | Projects where every change to the pipeline must be deliberate |
+| `@cbs-consulting/stack-sentinel@latest` | The latest release; changes when a new one is published | Most projects, and any project nobody will maintain: the tool stays current without anyone editing the pipeline |
+| `@cbs-consulting/stack-sentinel@0.3.0` | Exactly that release, until someone changes the version | Projects where every change to the pipeline must be deliberate |
 
-Without the `#...` part, every run uses the newest code on `main`, tested or
-not.
+Write `@latest` out with `npx`. Without it, `npx` can keep using a copy it
+downloaded earlier, which matters on build agents that are not wiped
+between runs.
 
-`stable` is a branch that only ever moves forward. It is moved by the
-"Promote to stable" workflow in the Actions tab, which
+Releases are published by the "Release" workflow in the Actions tab, which
 
-1. runs the tests and the live feed tests on the commit to promote,
-2. requires a higher version in `package.json` than `stable` has now,
-3. publishes that commit as the release `v<version>`, and
-4. moves `stable` to it.
+1. runs the tests and the live feed tests on the commit to release,
+2. requires a higher version in `package.json` than the latest one on npm,
+3. publishes that commit as the GitHub release `v<version>`, and
+4. publishes it to npm, with a provenance statement that ties the package to
+   this repository and commit.
 
 It has a "dry run" option that does steps 1 and 2 and changes nothing.
 
