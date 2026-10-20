@@ -10,7 +10,4 @@
   <polygon points="60,25 90,42 60,59 30,42" fill="#FFFFFF" />
   <polygon points="30,42 60,59 60,65 30,48" fill="#FFFFFF" fill-opacity="0.72" />
   <polygon points="60,59 90,42 90,48 60,65" fill="#FFFFFF" fill-opacity="0.45" />
-  <!-- badge: the pulse the sentinel keeps watching -->
-  <circle cx="90" cy="88" r="17" fill="#353433" stroke="#EE7D01" stroke-width="4" />
-  <path d="M80 88h4.5l2.5-7 4 14 2.5-7h6.5" fill="none" stroke="#EE7D01" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
 </svg>
