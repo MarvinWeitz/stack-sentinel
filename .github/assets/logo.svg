@@ -1,13 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
   <rect x="4" y="4" width="112" height="112" rx="24" fill="#EE7D01" />
-  <!-- three stacked layers: the project's stack -->
-  <polygon points="60,55 90,72 60,89 30,72" fill="#FFFFFF" />
-  <polygon points="30,72 60,89 60,95 30,78" fill="#FFFFFF" fill-opacity="0.72" />
-  <polygon points="60,89 90,72 90,78 60,95" fill="#FFFFFF" fill-opacity="0.45" />
-  <polygon points="60,40 90,57 60,74 30,57" fill="#FFFFFF" />
-  <polygon points="30,57 60,74 60,80 30,63" fill="#FFFFFF" fill-opacity="0.72" />
-  <polygon points="60,74 90,57 90,63 60,80" fill="#FFFFFF" fill-opacity="0.45" />
-  <polygon points="60,25 90,42 60,59 30,42" fill="#FFFFFF" />
-  <polygon points="30,42 60,59 60,65 30,48" fill="#FFFFFF" fill-opacity="0.72" />
-  <polygon points="60,59 90,42 90,48 60,65" fill="#FFFFFF" fill-opacity="0.45" />
+  <polygon points="60,55 90,72 60,89 30,72" fill="#F6B873" fill-opacity="0.9" />
+  <polygon points="30,72 60,89 60,95 30,78" fill="#F6B873" fill-opacity="0.77" />
+  <polygon points="60,89 90,72 90,78 60,95" fill="#F6B873" fill-opacity="0.65" />
+  <polygon points="60,40 90,57 60,74 30,57" fill="#FADBB8" fill-opacity="0.88" />
+  <polygon points="30,57 60,74 60,80 30,63" fill="#FADBB8" fill-opacity="0.75" />
+  <polygon points="60,74 90,57 90,63 60,80" fill="#FADBB8" fill-opacity="0.63" />
+  <polygon points="60,25 90,42 60,59 30,42" fill="#FFFFFF" fill-opacity="0.9" />
+  <polygon points="30,42 60,59 60,65 30,48" fill="#FFFFFF" fill-opacity="0.77" />
+  <polygon points="60,59 90,42 90,48 60,65" fill="#FFFFFF" fill-opacity="0.65" />
 </svg>
