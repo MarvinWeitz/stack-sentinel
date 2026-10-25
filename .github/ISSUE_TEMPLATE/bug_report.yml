@@ -1,0 +1,60 @@
+name: Bug report
+description: A check reports something wrong, misses something, or the tool itself fails.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not paste webhook or heartbeat URLs. Anyone who has them can post to your channel.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The command you ran, the settings you changed, and the relevant files of the scanned project, such as `package.json`, `manifest.yml` or `ui5.yaml`.
+      placeholder: |
+        1. stack-sentinel . --format json
+        2. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: check
+    attributes:
+      label: Check
+      options:
+        - ui5-version
+        - node-version
+        - cf-node-version
+        - cap-version
+        - npm-audit
+        - Notification or report
+        - Settings or shared config
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: stack-sentinel version
+      description: Output of `stack-sentinel --version`, or `toolVersion` in the report.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Node.js version, operating system, and where it runs (locally, GitHub Actions, Azure Pipelines).
+      placeholder: Node 22.22.1, ubuntu-latest, GitHub Actions
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output
+      description: The relevant output or JSON report. It is formatted as code automatically.
+      render: shell

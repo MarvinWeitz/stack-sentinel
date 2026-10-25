@@ -336,10 +336,13 @@ nothing.
 heartbeat carries it as `toolVersion`, and the Teams card shows it, so you can
 see which release each project is on.
 
+<a id="contributing"></a>
+
 ## 🛠️ Contributing
 
 There is nothing to install: clone the repo and run `npm test` with Node.js 22
-or newer.
+or newer. [CONTRIBUTING.md](CONTRIBUTING.md) explains how to propose a change,
+and [SECURITY.md](SECURITY.md) how to report a vulnerability privately.
 
 ### Adding a check
 

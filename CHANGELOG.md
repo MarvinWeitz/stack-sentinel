@@ -10,6 +10,9 @@ release notes.
 
 ## Unreleased
 
+- Add contributing guide, code of conduct, security policy, issue and pull
+  request templates, and Dependabot updates for GitHub Actions and the dev
+  container.
 - Releases have a changelog. `CHANGELOG.md` ships in the npm package, and
   each version's entry is its GitHub release notes.
 
