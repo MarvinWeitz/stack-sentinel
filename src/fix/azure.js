@@ -32,7 +32,7 @@ export function azureProvider({ collectionUri, project, repositoryId, token, tim
       const hint = res.status === 401 || res.status === 403
         ? ' Pass $(System.AccessToken) as SYSTEM_ACCESSTOKEN, and give the project\'s build service "Contribute" and "Contribute to pull requests" on the repository.'
         : '';
-      throw new Error(`Azure DevOps answered ${method} ${path.split('?')[0] || '/'} with HTTP ${res.status}${detail ? `: ${detail}` : ''}.${hint}`);
+      throw Object.assign(new Error(`Azure DevOps answered ${method} ${path.split('?')[0] || '/'} with HTTP ${res.status}${detail ? `: ${detail}` : ''}.${hint}`), { status: res.status });
     }
     return res.status === 204 ? null : res.json();
   }
@@ -101,8 +101,8 @@ export function azureProvider({ collectionUri, project, repositoryId, token, tim
       return current ? 'updated' : 'created';
     },
 
-    async createPullRequest({ branch, baseBranch, title, body }) {
-      const pr = await call('POST', '/pullrequests', { sourceRefName: heads(branch), targetRefName: heads(baseBranch), title, description: fit(body) });
+    async createPullRequest({ branch, baseBranch, title, body, draft = false }) {
+      const pr = await call('POST', '/pullrequests', { sourceRefName: heads(branch), targetRefName: heads(baseBranch), title, description: fit(body), isDraft: draft });
       return { id: pr.pullRequestId, url: await webUrl(pr.pullRequestId) };
     },
 

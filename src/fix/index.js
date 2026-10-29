@@ -49,6 +49,40 @@ export function detectProvider(env, { token, timeoutSeconds }) {
 }
 
 const STALE = 'stack-sentinel no longer finds anything to change here, so this pull request is closed.';
+const WORKFLOWS = 'GitHub lets only a token with the "Workflows" permission change files in .github/workflows, and GITHUB_TOKEN cannot have it. '
+  + 'To have them changed too, set SENTINEL_FIX_TOKEN to a token with "Contents", "Pull requests" and "Workflows" write access.';
+
+/** Commits one group's changes to its branch and opens or updates its pull request. */
+async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log }) {
+  // the edits are made to the default branch as it is now, not to the files the scan saw
+  let { files, applied, skipped } = await applyGroup({ ...group, changes: group.changes.map((c) => ({ ...c, file: inRepo(c.file) })) },
+    (file) => provider.readFile(baseBranch, file));
+  for (const s of skipped) log(`not changed: ${s.change.file}: ${s.reason}`);
+  if (files.size === 0) return { action: 'skipped', more: { reason: 'none of the changes apply to the default branch' } };
+  let written;
+  const notes = [];
+  try {
+    written = await provider.writeBranch(branch, baseBranch, files, group.title, { open: Boolean(open) });
+  } catch (err) {
+    // GitHub refuses the whole commit when it touches a workflow file the token may not change
+    const workflow = (file) => provider.platform === 'github' && /^\.github\/workflows\//.test(file);
+    if (err.status !== 403 || ![...files.keys()].some(workflow)) throw err;
+    const left = [...files.keys()].filter(workflow);
+    log(`not changed: ${left.join(', ')}: ${WORKFLOWS}`);
+    files = new Map([...files].filter(([file]) => !workflow(file)));
+    applied = applied.filter((c) => !workflow(c.file));
+    if (files.size === 0) return { action: 'skipped', more: { reason: WORKFLOWS } };
+    notes.push(`Not changed: ${left.map((f) => `\`${f}\``).join(', ')}. ${WORKFLOWS}`);
+    written = await provider.writeBranch(branch, baseBranch, files, group.title, { open: Boolean(open) });
+  }
+  const body = pullRequestBody(group, applied, report, notes);
+  if (open) {
+    if (written !== 'unchanged' || open.title !== group.title || open.body !== body) await provider.updatePullRequest(open, { title: group.title, body });
+    return { action: written === 'unchanged' ? 'unchanged' : 'updated' };
+  }
+  const pr = await provider.createPullRequest({ branch, baseBranch, title: group.title, body, draft: group.draft });
+  return { action: 'created', created: true, more: { url: pr.url } };
+}
 
 /**
  * Opens one pull request per group of fixes, or updates the one an earlier run opened.
@@ -82,32 +116,22 @@ export async function openPullRequests(report, root, { provider, fixOn, only, br
     const branch = `${branchPrefix}${group.id}`;
     const prs = existing.filter((p) => p.branch === branch);
     const open = prs.find((p) => p.state === 'open');
-    const skip = (reason) => results.push({ group: group.id, title: group.title, action: 'skipped', reason, ...(open ? { url: open.url } : {}) });
+    const result = (action, more) => results.push({ group: group.id, title: group.title, action, ...(open ? { url: open.url } : {}), ...more });
     if (!open && prs.some((p) => p.state === 'closed' && readMarker(p.body) === group.signature)) {
-      skip('a pull request for these versions was closed without merging');
+      result('skipped', { reason: 'a pull request for these versions was closed without merging' });
       continue;
     }
     if (!open && openCount >= maxPullRequests) {
-      skip(`${openCount} stack-sentinel pull requests are already open (fix.maxPullRequests)`);
+      result('skipped', { reason: `${openCount} stack-sentinel pull requests are already open (fix.maxPullRequests)` });
       continue;
     }
-    // the edits are made to the default branch as it is now, not to the files the scan saw
-    const { files, applied, skipped } = await applyGroup({ ...group, changes: group.changes.map((c) => ({ ...c, file: inRepo(c.file) })) },
-      (file) => provider.readFile(baseBranch, file));
-    for (const s of skipped) log(`not changed: ${s.change.file}: ${s.reason}`);
-    if (files.size === 0) {
-      skip('none of the changes apply to the default branch');
-      continue;
-    }
-    const body = pullRequestBody(group, applied, report);
-    const written = await provider.writeBranch(branch, baseBranch, files, group.title, { open: Boolean(open) });
-    if (open) {
-      if (written !== 'unchanged' || open.title !== group.title || open.body !== body) await provider.updatePullRequest(open, { title: group.title, body });
-      results.push({ group: group.id, title: group.title, action: written === 'unchanged' ? 'unchanged' : 'updated', url: open.url });
-    } else {
-      const pr = await provider.createPullRequest({ branch, baseBranch, title: group.title, body });
-      openCount++;
-      results.push({ group: group.id, title: group.title, action: 'created', url: pr.url });
+    // one group that fails does not stop the others; the run still ends as a tool failure
+    try {
+      const done = await writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log });
+      if (done.created) openCount++;
+      result(done.action, done.more);
+    } catch (err) {
+      result('failed', { reason: err.message });
     }
   }
   return results;

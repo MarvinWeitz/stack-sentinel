@@ -211,6 +211,8 @@ export async function main(argv, env = process.env) {
         provider, fixOn: settings.fix.on, only: settings.fix.groups, branchPrefix: settings.fix.branchPrefix, maxPullRequests: settings.fix.maxPullRequests,
         log: (line) => console.error(`stack-sentinel: ${line}`),
       });
+      const failed = report.pullRequests.filter((pr) => pr.action === 'failed');
+      if (failed.length) throw new Error(failed.map((pr) => `${pr.title}: ${pr.reason}`).join(' '));
     }
   } catch (err) {
     fixError = err;

@@ -31,7 +31,7 @@ export function githubProvider({ apiUrl = 'https://api.github.com', repository, 
         : res.status === 403 || res.status === 404
           ? ' The token needs "contents: write" and "pull-requests: write" (the permissions block of the workflow).'
           : '';
-      throw new Error(`GitHub answered ${method} ${path} with HTTP ${res.status}${detail ? `: ${detail}` : ''}.${hint}`);
+      throw Object.assign(new Error(`GitHub answered ${method} ${path} with HTTP ${res.status}${detail ? `: ${detail}` : ''}.${hint}`), { status: res.status });
     }
     return res.status === 204 ? null : res.json();
   }
@@ -82,8 +82,8 @@ export function githubProvider({ apiUrl = 'https://api.github.com', repository, 
       return current ? 'updated' : 'created';
     },
 
-    async createPullRequest({ branch, baseBranch, title, body }) {
-      const pr = await call('POST', '/pulls', { title, body, head: branch, base: baseBranch });
+    async createPullRequest({ branch, baseBranch, title, body, draft = false }) {
+      const pr = await call('POST', '/pulls', { title, body, head: branch, base: baseBranch, draft });
       return { id: pr.number, url: pr.html_url };
     },
 

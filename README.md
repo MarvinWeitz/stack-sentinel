@@ -271,7 +271,7 @@ version in one file are made:
 
 | Check | What is changed |
 | --- | --- |
-| `ui5-version` | `framework.version` and the fiori-tools-proxy `ui5.version` in `ui5.yaml`, the version in CDN bootstrap URLs (a version is added where none is set), and `"sap.platform.cf".ui5VersionNumber` in `manifest.json` (added where it is missing) |
+| `ui5-version` | `framework.version` and the fiori-tools-proxy `ui5.version` in `ui5.yaml`, the version in CDN bootstrap URLs (a version is added where none is set), and `"sap.platform.cf".ui5VersionNumber` in `manifest.json` (added where it is missing). A fiori-tools-proxy without a version gets the one the app builds with (`framework.version` in a `ui5*.yaml` of the same folder), or else the recommended one |
 | `node-version`, `cf-node-version` | The Node.js version in CI pipelines (`setup-node`, `NodeTool`, `UseNode`) and in `FROM node:<tag>` is moved to the recommended major. `.nvmrc` and `.node-version` are set to the recommended Node.js major, `"engines.node"` to `^<major>`, a plain lower bound such as `>=18` is raised, and an exact version on Cloud Foundry (`22.11.0`) becomes a range the buildpack can stage (`22.x`). Where the two checks disagree, the version the Cloud Foundry buildpack ships wins |
 | `npm-audit` | Overrides in `package.json` that are unused or no longer needed are removed |
 
@@ -292,6 +292,10 @@ vulnerable packages, which need a lockfile update.
 - **Choose what is fixed** with `fix.groups`: `SENTINEL_FIX_GROUPS=ui5`
   fixes UI5 versions only, and leaves npm overrides to be reported. A pull
   request of a kind that is turned off is left open as it is.
+- **Workflow files on GitHub** (`.github/workflows/*.yml`) can only be
+  changed by a token with the "Workflows" permission, which `GITHUB_TOKEN`
+  cannot have. Without one, they are left out of the pull request, which
+  says so, and the rest goes through.
 - **At most `fix.maxPullRequests`** (default 5) are open at a time.
 - **Moving to a new release line** (UI5 1.120 to 1.148, Node.js 20 to 24) is a normal pull
   request too. The project's own checks on the pull request are what show

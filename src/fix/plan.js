@@ -103,7 +103,7 @@ export const marker = (group) => `<!-- ${MARKER}: ${group.signature} -->`;
 export const readMarker = (body) => new RegExp(`<!-- ${MARKER}: (.*?) -->`).exec(body ?? '')?.[1] ?? null;
 
 /** Pull request description: what changes where, and why. */
-export function pullRequestBody(group, applied, report) {
+export function pullRequestBody(group, applied, report, notes = []) {
   const rows = applied.map(({ file, finding }) => {
     const from = finding.version ? `\`${finding.version}\`` : 'not set';
     const what = finding.fix.to ? `${from} → \`${finding.fix.to}\`` : 'removed';
@@ -119,6 +119,7 @@ export function pullRequestBody(group, applied, report) {
     ...rows,
     ...(why.length ? ['', ...why.map((w) => `${w}.`)] : []),
     ...after,
+    ...notes.flatMap((n) => ['', n]),
     '',
     '---',
     `Opened by [stack-sentinel](https://github.com/cbs-consulting/stack-sentinel) ${report.toolVersion}${report.links?.run ? ` in [this run](${report.links.run})` : ''}. `
