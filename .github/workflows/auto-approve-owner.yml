@@ -1,0 +1,30 @@
+name: Auto-approve owner
+# The merge queue only takes approved pull requests, and nobody can approve their own.
+# This approves pull requests that the maintainer opened and last pushed to, so they can
+# enter the queue without a second person. Everyone else's still need a real review.
+#
+# Runs on pull_request_target, so this file comes from main and a pull request cannot
+# change it to approve itself. It never checks out the pull request's code. It compares
+# user ids, not logins, so a renamed and re-registered login cannot match.
+#
+# Needs "Allow GitHub Actions to create and approve pull requests" under Actions ->
+# General -> Workflow permissions, for the organization and the repository.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+permissions:
+  pull-requests: write
+jobs:
+  approve:
+    # 48176902 is MarvinWeitz. On synchronize the sender is whoever pushed.
+    if: >-
+      !github.event.pull_request.draft &&
+      github.event.pull_request.user.id == 48176902 &&
+      github.event.sender.id == 48176902
+    runs-on: ubuntu-latest
+    steps:
+      - name: Approve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.html_url }}
+        run: gh pr review --approve --body "Approved for the maintainer's own pull request." "$PR"

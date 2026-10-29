@@ -49,6 +49,9 @@ first.
 Dependabot's minor and patch updates are approved and queued automatically
 once their checks pass; major updates wait for a maintainer.
 
+The maintainer's own pull requests are approved by a workflow, so they can
+enter the queue without a second person. Everyone else's need a review.
+
 ## Commit messages
 
 Use [Conventional Commits](https://www.conventionalcommits.org/), for example
