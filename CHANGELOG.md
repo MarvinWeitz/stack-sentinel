@@ -10,6 +10,9 @@ release notes.
 
 ## Unreleased
 
+- A Cloud Foundry app that declares no Node.js version gets
+  `"engines.node"` for the line the buildpack keeps longest in the Node.js
+  fix pull request.
 - The fix for the UI5 version pins a local Fiori preview (fiori-tools-proxy)
   that loads the latest release to the version the app builds with.
 - `node-version` also reads the Node.js version that CI pipelines set up

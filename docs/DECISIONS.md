@@ -544,7 +544,8 @@ value in one file: UI5 versions in `ui5.yaml`, bootstrap URLs and the Work
 Zone pin, Node.js versions in `"engines.node"` and version files, and npm
 overrides that no longer do anything. `minUI5Version` is a statement of
 support and is never raised. CAP majors need a migration. A missing
-`"engines.node"` is not added, because the version would be a guess, and a
+`"engines.node"` is only added for Cloud Foundry apps, which run on the
+buildpack default anyway; elsewhere the version would be a guess. A
 range is only rewritten when it is a plain lower bound (`>=18`). Vulnerable
 packages need a lockfile update, which means running npm; the tool starts no
 child processes.

@@ -165,6 +165,8 @@ export function evaluate(usage, buildpack, { now, warnDays }) {
     if (!buildpack.defaultRange) return findings;
     add('info', `No Node.js version is declared ("engines.node"), so Cloud Foundry uses the buildpack default, ${buildpack.defaultRange}.`);
     findings.at(-1).action = `Declare the version in package.json, e.g. "engines": { "node": "^${target}" }`;
+    // the app runs on the buildpack default already, so pinning the line it keeps longest is no guess
+    findings.at(-1).fix = { kind: 'node-engines-missing', to: `^${target}`, binding: true };
     range = buildpack.defaultRange;
   }
   const what = usage.range ? `"${usage.range}"` : `The buildpack default ${range}`;

@@ -20,6 +20,7 @@ export function applyFix(text, finding) {
     case 'ui5-workzone-missing': return workzoneMissing(text, fix.to);
     case 'npm-override-remove': return removeOverride(text, fix.path);
     case 'node-engines': return engines(text, version, fix.to);
+    case 'node-engines-missing': return enginesMissing(text, fix.to);
     case 'node-version-file': return versionFile(text, version, fix.to);
     case 'node-ci': return onLines(text, versionsFromCi(text).find((v) => v.value === version), version, fix.to);
     case 'node-container': return onLines(text, versionsFromDockerfile(text).find((v) => v.value === version && v.suffix === (fix.suffix ?? '')), version, fix.to, /(node:)/);
@@ -91,12 +92,18 @@ function workzoneMissing(text, to) {
  * The file is written back the way npm writes it, so only a file already in that layout is
  * changed; anything else would rewrite lines that have nothing to do with the override.
  */
-function removeOverride(text, path) {
-  const json = parse(text);
+/** Writes JSON back the way npm does, in the indent and line endings `text` has. */
+function npmWriter(text) {
   const ind = indentOf(text);
   const nl = text.includes('\r\n') ? '\r\n' : '\n';
-  const write = (obj) => JSON.stringify(obj, null, ind).replace(/\n/g, nl) + (/\r?\n$/.test(text) ? nl : '');
-  if (!json || write(json) !== text) return { skipped: 'package.json is not laid out the way npm writes it' };
+  return (obj) => JSON.stringify(obj, null, ind).replace(/\n/g, nl) + (/\r?\n$/.test(text) ? nl : '');
+}
+const NOT_NPM = { skipped: 'package.json is not laid out the way npm writes it' };
+
+function removeOverride(text, path) {
+  const json = parse(text);
+  const write = npmWriter(text);
+  if (!json || write(json) !== text) return NOT_NPM;
   const chain = [json.overrides];
   for (const key of path.slice(0, -1)) chain.push(chain.at(-1)?.[key]);
   const last = path.at(-1);
@@ -154,4 +161,14 @@ function previewMissing(text, to) {
   const cr = lines[found.block].endsWith('\r') ? '\r' : '';
   lines.splice(found.block + 1, 0, `${' '.repeat(indent)}version: ${to}${cr}`);
   return { text: lines.join('\n') };
+}
+
+/** Adds "engines": { "node": to } to a package.json that declares no Node.js version. */
+function enginesMissing(text, to) {
+  const json = parse(text);
+  const write = npmWriter(text);
+  if (!json || write(json) !== text) return NOT_NPM;
+  if (json.engines?.node) return { skipped: '"engines.node" is already set' };
+  json.engines = { ...json.engines, node: to };
+  return { text: write(json) };
 }

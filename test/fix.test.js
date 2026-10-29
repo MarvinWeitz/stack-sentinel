@@ -326,14 +326,18 @@ test('Node.js: one pull request for both checks; what Cloud Foundry ships wins',
   assert.equal(group.id, 'node');
   assert.deepEqual(group.changes.map((c) => [c.file, c.finding.version, c.finding.fix.to]), [
     ['app/orders/package.json', '20.1.0', '^24'],
+    ['db/package.json', undefined, '^24'], // deployed with no version: pinned to the line the buildpack keeps longest
     ['package.json', '^20', '^24'],
     ['router/package.json', '>=18', '>=22'], // only a plain lower bound is raised
     // node-version would move it to ^24; the buildpack's fix keeps the line and drops the exact version
     ['tools/api/package.json', '22.11.0', '22.x'],
   ]);
   assert.equal(group.title, 'Update Node.js versions');
-  const { files } = await applyGroup(group, (file) => readFile(fixture(`cf-app/${file}`), 'utf8'));
+  const { files, skipped } = await applyGroup(group, (file) => readFile(fixture(`cf-app/${file}`), 'utf8'));
   assert.equal(JSON.parse(files.get('tools/api/package.json')).engines.node, '22.x');
+  assert.deepEqual(skipped.map((s) => [s.change.file, s.reason]), [['db/package.json', 'package.json is not laid out the way npm writes it']]);
+  const added = applyFix('{\n  "name": "db",\n  "engines": {\n    "npm": ">=10"\n  }\n}\n', finding({ kind: 'node-engines-missing', to: '^24' }));
+  assert.equal(added.text, '{\n  "name": "db",\n  "engines": {\n    "npm": ">=10",\n    "node": "^24"\n  }\n}\n');
   assert.deepEqual(planFixes(report.findings, { only: ['ui5'] }), []);
 });
 
