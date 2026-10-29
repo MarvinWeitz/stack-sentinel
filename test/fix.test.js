@@ -11,6 +11,7 @@ import { azureProvider } from '../src/fix/azure.js';
 import { applyFixes, detectProvider, openPullRequests } from '../src/fix/index.js';
 import { applyGroup, marker, planFixes, pullRequestBody, readMarker } from '../src/fix/plan.js';
 import { teamsPayload } from '../src/notifiers/webhook.js';
+import { resolveSettings } from '../src/settings.js';
 
 const fixture = (p) => fileURLToPath(new URL(`./fixtures/${p}`, import.meta.url));
 const now = new Date('2026-10-11T00:00:00Z');
@@ -73,6 +74,7 @@ test('groups fixes per kind; the change that moves furthest wins for one place',
   // minUI5Version is never changed
   assert.ok(!report.findings.some((f) => f.source === 'minUI5Version' && f.fix));
   assert.deepEqual(planFixes(report.findings, { fixOn: 'error' })[0].changes.map((c) => c.file), ['webapp/index.html']);
+  assert.deepEqual(planFixes(report.findings, { only: ['npm-overrides'] }), []);
   assert.equal(readMarker(`x\n${marker(groups[0])}`), 'ui5 1.148.12');
 });
 
@@ -185,6 +187,8 @@ test('closes a pull request whose findings are gone, unless its check did not ru
   const clean = { project: 'p', toolVersion: '0', checks: { run: ['ui5-version'], skipped: [] }, findings: [] };
   const provider = fakeProvider({}, stale());
   assert.deepEqual((await openPullRequests(clean, fixture('app'), opts(provider))).map((r) => r.action), ['closed']);
+  // a kind of fix that was turned off leaves its pull request alone
+  assert.deepEqual(await openPullRequests(clean, fixture('app'), { ...opts(fakeProvider({}, stale())), only: ['npm-overrides'] }), []);
   const broken = { ...clean, findings: [{ check: 'ui5-version', severity: 'error', source: 'check', message: 'Check failed to run: offline' }] };
   for (const report of [broken, { ...clean, checks: { run: [], skipped: ['ui5-version'] } }]) {
     const p = fakeProvider({}, stale());
@@ -294,4 +298,10 @@ test('the Teams card links the fix pull requests', () => {
   const texts = teamsPayload(report, 'warn', 25).attachments[0].content.body.map((b) => b.text);
   assert.ok(texts.includes('[Update UI5 to 1.148.12](https://pr/1) (new)'));
   assert.ok(!texts.some((t) => t.includes('https://pr/0')));
+});
+
+test('fix.groups accepts only known kinds of fix', async () => {
+  assert.deepEqual(resolveSettings({ env: { SENTINEL_FIX_GROUPS: 'ui5' } }).values.fix.groups, ['ui5']);
+  assert.deepEqual(resolveSettings({}).values.fix.groups, ['ui5', 'npm-overrides']);
+  assert.throws(() => resolveSettings({ env: { SENTINEL_FIX_GROUPS: 'ui5,cap' } }), /expected a list of ui5, npm-overrides/);
 });

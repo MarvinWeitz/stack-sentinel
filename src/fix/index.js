@@ -6,9 +6,9 @@ import { githubProvider } from './github.js';
 import { applyGroup, planFixes, pullRequestBody, readMarker } from './plan.js';
 
 /** Changes the files in the scanned folder itself. Returns [{ group, files, skipped }]. */
-export async function applyFixes(report, root, { fixOn }) {
+export async function applyFixes(report, root, { fixOn, only }) {
   const results = [];
-  for (const group of planFixes(report.findings, { fixOn })) {
+  for (const group of planFixes(report.findings, { fixOn, only })) {
     const { files, skipped } = await applyGroup(group, (file) => readFile(join(root, file), 'utf8').catch(() => null));
     for (const [file, text] of files) await writeFile(join(root, file), text);
     results.push({ group: group.id, title: group.title, files: [...files.keys()], skipped: skipped.map((s) => `${s.change.file}: ${s.reason}`) });
@@ -56,21 +56,22 @@ const STALE = 'stack-sentinel no longer finds anything to change here, so this p
  * requests on those branches are the memory. Returns what happened to each group:
  * [{ group, title, action: 'created' | 'updated' | 'unchanged' | 'closed' | 'skipped', url?, reason? }].
  */
-export async function openPullRequests(report, root, { provider, fixOn, branchPrefix, maxPullRequests, log = () => {} }) {
+export async function openPullRequests(report, root, { provider, fixOn, only, branchPrefix, maxPullRequests, log = () => {} }) {
   const prefix = relative(repositoryRoot(root), root).split(sep).filter(Boolean).join('/');
   const inRepo = (file) => (prefix ? `${prefix}/${file}` : file);
-  const groups = planFixes(report.findings, { fixOn });
+  const groups = planFixes(report.findings, { fixOn, only });
   const baseBranch = await provider.defaultBranch();
   const existing = await provider.findPullRequests(branchPrefix);
   const results = [];
 
   // A pull request whose findings are gone is closed, but only when its check ran cleanly:
-  // a check that could not run says nothing about whether the finding is still there.
+  // a check that could not run says nothing about whether the finding is still there. One
+  // whose kind of fix was turned off is left as it is.
   const failed = new Set(report.findings.filter((f) => f.source === 'check').map((f) => f.check));
   const covered = { ui5: 'ui5-version', 'npm-overrides': 'npm-audit' };
   for (const pr of existing.filter((p) => p.state === 'open')) {
     const id = pr.branch.slice(branchPrefix.length);
-    if (groups.some((g) => g.id === id) || !covered[id] || !report.checks.run.includes(covered[id]) || failed.has(covered[id])) continue;
+    if (groups.some((g) => g.id === id) || (only && !only.includes(id)) || !covered[id] || !report.checks.run.includes(covered[id]) || failed.has(covered[id])) continue;
     await provider.closePullRequest(pr, STALE);
     results.push({ group: id, title: pr.title, action: 'closed', url: pr.url });
   }

@@ -107,6 +107,7 @@ its value and where it came from.
 | `scan.maxDepth` | `--max-depth` | `SENTINEL_SCAN_MAX_DEPTH` | `8` | How many folder levels deep to scan |
 | `notify.maxFindings` |  | `SENTINEL_NOTIFY_MAX_FINDINGS` | `25` | Most findings listed in one Teams card |
 | `fix.mode` | `--fix` | `SENTINEL_FIX_MODE` | `off` | Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (see [Fix pull requests](#fix-pull-requests)): `off`, `apply`, `pr` |
+| `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), npm-overrides (npm overrides no longer needed) |
 | `fix.on` | `--fix-on` | `SENTINEL_FIX_ON` | `info` | Fix findings at or above this severity: `ok`, `info`, `warn`, `error` |
 | `fix.token` |  | `SENTINEL_FIX_TOKEN` |  | Token that opens the pull requests (default: `GITHUB_TOKEN` or `SYSTEM_ACCESSTOKEN`; not read from the config file) |
 | `fix.branchPrefix` |  | `SENTINEL_FIX_BRANCH_PREFIX` | `stack-sentinel/` | Start of the branch names of fix pull requests |
@@ -284,6 +285,9 @@ migration, and not vulnerable packages, which need a lockfile update.
 - **The edits are made to the default branch** as it is at the time of the
   run. A change whose file no longer holds the version the scan saw is left
   out.
+- **Choose what is fixed** with `fix.groups`: `SENTINEL_FIX_GROUPS=ui5`
+  fixes UI5 versions only, and leaves npm overrides to be reported. A pull
+  request of a kind that is turned off is left open as it is.
 - **At most `fix.maxPullRequests`** (default 5) are open at a time.
 - **Moving to a new release line** (UI5 1.120 to 1.148) is a normal pull
   request too. The project's own checks on the pull request are what show

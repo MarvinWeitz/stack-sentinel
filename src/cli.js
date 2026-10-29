@@ -204,11 +204,11 @@ export async function main(argv, env = process.env) {
   // that fails is a tool failure, but the report is still delivered first.
   let fixError;
   try {
-    if (settings.fix.mode === 'apply') report.fixes = await applyFixes(report, root, { fixOn: settings.fix.on });
+    if (settings.fix.mode === 'apply') report.fixes = await applyFixes(report, root, { fixOn: settings.fix.on, only: settings.fix.groups });
     if (settings.fix.mode === 'pr') {
       const provider = detectProvider(env, { token: settings.fix.token, timeoutSeconds: settings.timeoutSeconds });
       report.pullRequests = await openPullRequests(report, root, {
-        provider, fixOn: settings.fix.on, branchPrefix: settings.fix.branchPrefix, maxPullRequests: settings.fix.maxPullRequests,
+        provider, fixOn: settings.fix.on, only: settings.fix.groups, branchPrefix: settings.fix.branchPrefix, maxPullRequests: settings.fix.maxPullRequests,
         log: (line) => console.error(`stack-sentinel: ${line}`),
       });
     }

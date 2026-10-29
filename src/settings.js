@@ -33,6 +33,8 @@ export const SETTINGS = [
   { key: 'notify.maxFindings', type: 'int', default: 25, desc: 'Most findings listed in one Teams card' },
   { key: 'fix.mode', type: 'enum', values: ['off', 'apply', 'pr'], flag: 'fix', default: 'off',
     desc: 'Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (GitHub Actions and Azure DevOps)' },
+  { key: 'fix.groups', type: 'list', values: ['ui5', 'npm-overrides'], flag: 'fix-groups', default: ['ui5', 'npm-overrides'],
+    desc: 'Kinds of fix to make, one pull request each: ui5 (UI5 versions), npm-overrides (npm overrides no longer needed)' },
   { key: 'fix.on', type: 'enum', values: LEVELS, flag: 'fix-on', default: 'info', desc: 'Fix findings at or above this severity' },
   { key: 'fix.token', type: 'string', env: 'SENTINEL_FIX_TOKEN', noConfig: true, secret: true,
     desc: 'Token that opens the pull requests (default: GITHUB_TOKEN or SYSTEM_ACCESSTOKEN; not read from the config file)' },
@@ -127,7 +129,9 @@ function coerce(def, raw, where) {
     }
     case 'list': {
       const items = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : fail('a list');
-      return items.map((s) => String(s).trim()).filter(Boolean);
+      const list = items.map((s) => String(s).trim()).filter(Boolean);
+      if (def.values && list.some((v) => !def.values.includes(v))) fail(`a list of ${def.values.join(', ')}`);
+      return list;
     }
     case 'enum':
       return def.values.includes(raw) ? raw : fail(`one of ${def.values.join(', ')}`);

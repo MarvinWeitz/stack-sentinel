@@ -22,12 +22,12 @@ const newer = (a, b) => {
 /**
  * The fixes a report's findings carry, grouped. One place in a file can be named by several
  * findings (a line out of maintenance, and a patch removed from the CDN); the one that moves
- * furthest wins. Findings below `fixOn` are left out.
+ * furthest wins. Findings below `fixOn`, and groups not in `only` (ids), are left out.
  * Returns [{ id, check, title, signature, changes: [{ file, finding }] }].
  */
-export function planFixes(findings, { fixOn = 'info' } = {}) {
+export function planFixes(findings, { fixOn = 'info', only = GROUPS.map((g) => g.id) } = {}) {
   const groups = [];
-  for (const def of GROUPS) {
+  for (const def of GROUPS.filter((g) => only.includes(g.id))) {
     const byPlace = new Map();
     for (const f of findings) {
       if (!f.fix || !f.file || !def.kinds.test(f.fix.kind) || !atLeast(f.severity, fixOn)) continue;
