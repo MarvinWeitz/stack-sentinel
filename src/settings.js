@@ -31,6 +31,13 @@ export const SETTINGS = [
     desc: 'Folder names that are not scanned (replaces the default list)' },
   { key: 'scan.maxDepth', type: 'int', flag: 'max-depth', default: 8, desc: 'How many folder levels deep to scan' },
   { key: 'notify.maxFindings', type: 'int', default: 25, desc: 'Most findings listed in one Teams card' },
+  { key: 'fix.mode', type: 'enum', values: ['off', 'apply', 'pr'], flag: 'fix', default: 'off',
+    desc: 'Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (GitHub Actions and Azure DevOps)' },
+  { key: 'fix.on', type: 'enum', values: LEVELS, flag: 'fix-on', default: 'info', desc: 'Fix findings at or above this severity' },
+  { key: 'fix.token', type: 'string', env: 'SENTINEL_FIX_TOKEN', noConfig: true, secret: true,
+    desc: 'Token that opens the pull requests (default: GITHUB_TOKEN or SYSTEM_ACCESSTOKEN; not read from the config file)' },
+  { key: 'fix.branchPrefix', type: 'string', default: 'stack-sentinel/', desc: 'Start of the branch names of fix pull requests' },
+  { key: 'fix.maxPullRequests', type: 'int', default: 5, desc: 'Most fix pull requests open at the same time' },
 
   { key: 'ui5.feed', type: 'string', default: 'https://ui5.sap.com/versionoverview.json',
     desc: 'Version overview feed: a URL, or a path to a downloaded copy' },

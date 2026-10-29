@@ -106,6 +106,11 @@ its value and where it came from.
 | `scan.exclude` | `--exclude` | `SENTINEL_SCAN_EXCLUDE` | `node_modules,.git,dist,build,gen,coverage,.cache` | Folder names that are not scanned (replaces the default list) |
 | `scan.maxDepth` | `--max-depth` | `SENTINEL_SCAN_MAX_DEPTH` | `8` | How many folder levels deep to scan |
 | `notify.maxFindings` |  | `SENTINEL_NOTIFY_MAX_FINDINGS` | `25` | Most findings listed in one Teams card |
+| `fix.mode` | `--fix` | `SENTINEL_FIX_MODE` | `off` | Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (see [Fix pull requests](#fix-pull-requests)): `off`, `apply`, `pr` |
+| `fix.on` | `--fix-on` | `SENTINEL_FIX_ON` | `info` | Fix findings at or above this severity: `ok`, `info`, `warn`, `error` |
+| `fix.token` |  | `SENTINEL_FIX_TOKEN` |  | Token that opens the pull requests (default: `GITHUB_TOKEN` or `SYSTEM_ACCESSTOKEN`; not read from the config file) |
+| `fix.branchPrefix` |  | `SENTINEL_FIX_BRANCH_PREFIX` | `stack-sentinel/` | Start of the branch names of fix pull requests |
+| `fix.maxPullRequests` |  | `SENTINEL_FIX_MAX_PULL_REQUESTS` | `5` | Most fix pull requests open at the same time |
 | `ui5.feed` |  | `SENTINEL_UI5_FEED` | `https://ui5.sap.com/versionoverview.json` | Version overview feed: a URL, or a path to a downloaded copy |
 | `ui5.requireLts` |  | `SENTINEL_UI5_REQUIRE_LTS` | `true` | Warn about versions that are not long-term maintenance |
 | `ui5.warnDays` |  | `SENTINEL_UI5_WARN_DAYS` | `180` | Warn this many days before an end date |
@@ -252,6 +257,52 @@ remove the variable afterwards. The last lines of the tool's output say
 whether a notification was sent, and if not, why: no webhook address reached
 the tool (usually a missing or misnamed secret), or the status was below the
 threshold.
+
+<a id="fix-pull-requests"></a>
+
+## 🔧 Fix pull requests
+
+With `SENTINEL_FIX_MODE=pr` the scheduled run also opens pull requests that
+fix what can be fixed safely, much like Dependabot. Only edits that change one
+version in one file are made:
+
+| Check | What is changed |
+| --- | --- |
+| `ui5-version` | `framework.version` and the fiori-tools-proxy `ui5.version` in `ui5.yaml`, the version in CDN bootstrap URLs (a version is added where none is set), and `"sap.platform.cf".ui5VersionNumber` in `manifest.json` (added where it is missing) |
+| `npm-audit` | Overrides in `package.json` that are unused or no longer needed are removed |
+
+Nothing else is changed automatically: not `minUI5Version`, which states
+which versions an app supports, not CAP major versions, which need a
+migration, and not vulnerable packages, which need a lockfile update.
+
+- **One pull request per kind of fix**, on a branch whose name never changes
+  (`stack-sentinel/ui5`, `stack-sentinel/npm-overrides`). Each run updates it
+  while the findings remain, for example to a newer patch, and closes it when
+  they are gone.
+- **Closing a pull request without merging** skips those versions: the next
+  run opens a new one only when there is a newer version to move to.
+- **The edits are made to the default branch** as it is at the time of the
+  run. A change whose file no longer holds the version the scan saw is left
+  out.
+- **At most `fix.maxPullRequests`** (default 5) are open at a time.
+- **Moving to a new release line** (UI5 1.120 to 1.148) is a normal pull
+  request too. The project's own checks on the pull request are what show
+  whether the app still works.
+- The links to the pull requests are on the Teams card and in the JSON report
+  (`pullRequests`).
+- `SENTINEL_FIX_MODE=apply` (or `--fix apply`) only changes the files in the
+  scanned folder, for a local run or a pipeline of your own.
+
+| | GitHub Actions | Azure DevOps (Azure Repos) |
+| --- | --- | --- |
+| Turn it on | Variable `SENTINEL_FIX_MODE` = `pr` | Pipeline variable `SENTINEL_FIX_MODE` = `pr` |
+| Allow it once | Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" | Project settings → Repositories → the repository → Security → the project's build service: "Contribute" and "Contribute to pull requests" |
+| Token | The workflow's own `GITHUB_TOKEN`; nothing to set | `$(System.AccessToken)`, mapped in the example |
+| The pull request's checks | GitHub starts no workflows for pull requests opened with `GITHUB_TOKEN`. To have them run, set the secret `SENTINEL_FIX_TOKEN` to a GitHub App token or a fine-grained personal access token with "Contents" and "Pull requests" write access | Run as usual |
+| An open pull request after the default branch moved | Rebuilt on top of the default branch | Gets a commit on top, because pipelines may not force-push |
+
+The examples already carry the permissions and the token mapping, so turning
+it on needs no change to the pipeline file.
 
 <a id="heartbeat"></a>
 

@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { checks, selectChecks } from './checks/index.js';
 import { listFiles } from './files.js';
+import { applyFixes, detectProvider, openPullRequests } from './fix/index.js';
 import { notify, sendHeartbeat } from './notifiers/webhook.js';
 import { detectPipeline } from './pipeline.js';
 import { describeFiles, groupFindings, recommendations } from './report.js';
@@ -132,6 +133,13 @@ function printText(report) {
     if (g.action) console.log(`          → ${g.action}`);
   }
   for (const text of recommendations(report.findings)) console.log(`  ${text}.`);
+  for (const f of report.fixes ?? []) {
+    console.log(`  fixed: ${f.title}${f.files.length ? ` (${describeFiles(f.files)})` : ' (nothing changed)'}`);
+    for (const reason of f.skipped) console.log(`          not changed: ${reason}`);
+  }
+  for (const pr of report.pullRequests ?? []) {
+    console.log(`  pull request ${pr.action}: ${pr.title}${pr.url ? `  ${pr.url}` : ''}${pr.reason ? ` (${pr.reason})` : ''}`);
+  }
 }
 
 export async function main(argv, env = process.env) {
@@ -192,6 +200,23 @@ export async function main(argv, env = process.env) {
   const links = { run: settings.runUrl ?? pipeline.runUrl, repository: settings.repositoryUrl ?? pipeline.repositoryUrl };
   if (links.run || links.repository) report.links = Object.fromEntries(Object.entries(links).filter(([, v]) => v));
 
+  // Fixes come before the report goes out, so the card can link the pull requests. A fix
+  // that fails is a tool failure, but the report is still delivered first.
+  let fixError;
+  try {
+    if (settings.fix.mode === 'apply') report.fixes = await applyFixes(report, root, { fixOn: settings.fix.on });
+    if (settings.fix.mode === 'pr') {
+      const provider = detectProvider(env, { token: settings.fix.token, timeoutSeconds: settings.timeoutSeconds });
+      report.pullRequests = await openPullRequests(report, root, {
+        provider, fixOn: settings.fix.on, branchPrefix: settings.fix.branchPrefix, maxPullRequests: settings.fix.maxPullRequests,
+        log: (line) => console.error(`stack-sentinel: ${line}`),
+      });
+    }
+  } catch (err) {
+    fixError = err;
+    report.fixError = err.message;
+  }
+
   if (cli.json) console.log(JSON.stringify(report, null, 2));
   else printText(report);
   if (settings.output) await writeFile(settings.output, JSON.stringify(report, null, 2));
@@ -219,5 +244,6 @@ export async function main(argv, env = process.env) {
     console.error('stack-sentinel: heartbeat sent.');
   }
 
+  if (fixError) throw new Error(`Could not fix the findings: ${fixError.message}`);
   return settings.failOn !== 'never' && atLeast(report.status, settings.failOn) ? 1 : 0;
 }

@@ -304,20 +304,21 @@ function fixAction(pkg, version, hits, lockfile) {
 /**
  * The entries of a package.json "overrides" field: plain ones ("pkg": "spec", also with a
  * "pkg@range" key) and those scoped one level under a parent ("parent": { "pkg": "spec" },
- * where "." is the parent itself). Returns [{ name, parent, key }]; key names the entry for
- * the action, e.g. "proxy-addr" or "express" > "proxy-addr".
+ * where "." is the parent itself). Returns [{ name, parent, key, path }]; key names the entry
+ * for the action, e.g. "proxy-addr" or "express" > "proxy-addr", and path is where it sits
+ * in "overrides", e.g. ["express", "proxy-addr"].
  */
 export function overrideEntries(overrides) {
   const nameOf = (key) => (key.lastIndexOf('@') > 0 ? key.slice(0, key.lastIndexOf('@')) : key);
   const out = [];
   for (const [key, value] of Object.entries(overrides ?? {})) {
     if (typeof value === 'string') {
-      out.push({ name: nameOf(key), parent: null, key: `"${key}"` });
+      out.push({ name: nameOf(key), parent: null, key: `"${key}"`, path: [key] });
     } else if (value && typeof value === 'object') {
       for (const [child, spec] of Object.entries(value)) {
         if (typeof spec !== 'string') continue; // deeper nesting is not judged
-        if (child === '.') out.push({ name: nameOf(key), parent: null, key: `"${key}"` });
-        else out.push({ name: nameOf(child), parent: nameOf(key), key: `"${child}" under "${key}"` });
+        if (child === '.') out.push({ name: nameOf(key), parent: null, key: `"${key}"`, path: [key, child] });
+        else out.push({ name: nameOf(child), parent: nameOf(key), key: `"${child}" under "${key}"`, path: [key, child] });
       }
     }
   }
@@ -349,7 +350,11 @@ export function unneededOverrides(lockfile, graph, overrides) {
   };
   const findings = [];
   for (const entry of overrideEntries(overrides)) {
-    const base = { check: CHECK, severity: 'info', source: 'overrides', file: manifest, details: { override: entry.key, package: entry.name } };
+    const base = {
+      check: CHECK, severity: 'info', source: 'overrides', file: manifest,
+      details: { override: entry.key, package: entry.name },
+      fix: { kind: 'npm-override-remove', path: entry.path },
+    };
     const remove = `Remove ${entry.key} from "overrides" in ${manifest}, then run "npm install" in ${folder(lockfile)}`;
     const targets = [...graph.nodes.values()]
       .filter((n) => !graph.roots.has(n.path) && n.name === entry.name && (!entry.parent || below(n.path, entry.parent)))

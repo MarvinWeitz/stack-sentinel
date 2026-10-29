@@ -10,6 +10,12 @@ release notes.
 
 ## Unreleased
 
+- Fix pull requests, much like Dependabot: with `SENTINEL_FIX_MODE=pr` the
+  scheduled run on GitHub Actions or Azure DevOps opens one pull request per
+  kind of fix, and keeps it up to date. It changes UI5 versions in
+  `ui5.yaml`, bootstrap URLs and `manifest.json`, and removes npm overrides
+  that are no longer needed. `SENTINEL_FIX_MODE=apply` changes the scanned
+  files instead. Findings that can be fixed carry a `fix` in the JSON report.
 - Add contributing guide, code of conduct, security policy, issue and pull
   request templates, and Dependabot updates for GitHub Actions and the dev
   container.

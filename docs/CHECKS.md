@@ -4,6 +4,8 @@ What each check looks at and when it reports what. Back to the [README](../READM
 
 `stack-sentinel --list-checks` prints the ids. Settings named here (`ui5.warnDays`, …) are listed in the README under [Settings](../README.md#settings).
 
+Some findings can be fixed automatically: they carry a `fix` in the JSON report, and `SENTINEL_FIX_MODE` applies them or opens pull requests for them (README, [Fix pull requests](../README.md#fix-pull-requests)).
+
 ## `ui5-version`
 
 Compares the UI5 versions a project uses with SAP's version overview feed

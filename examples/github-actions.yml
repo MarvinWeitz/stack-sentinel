@@ -4,8 +4,10 @@
 #   Settings -> Secrets and variables -> Actions
 #     Secrets:   SENTINEL_WEBHOOK_URL    where the report is posted (Teams or a JSON endpoint)
 #                SENTINEL_HEARTBEAT_URL  optional: gets a ping after every run
+#                SENTINEL_FIX_TOKEN      optional: token for fix pull requests, so their checks run
 #     Variables: any SENTINEL_... setting from the README, for example
 #                SENTINEL_NOTIFY_ON = ok   send a card on every run; useful for a first test
+#                SENTINEL_FIX_MODE = pr    open pull requests that fix what can be fixed safely
 #                SENTINEL_SHARED_CONFIG    address of a config shared by many projects
 #                SENTINEL_SKIP_CHECKS, SENTINEL_UI5_WARN_DAYS, ...
 # Variables defined for a whole organization work the same way.
@@ -17,6 +19,11 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
+    # Write access is used only with SENTINEL_FIX_MODE = pr, to open fix pull requests.
+    # Without that setting, "contents: read" is enough.
+    permissions:
+      contents: write
+      pull-requests: write
     env:
       # The npm package to run. "@latest" follows the latest release, so the tool stays
       # current without anyone editing this file. To stay on one release instead, set the
@@ -36,10 +43,12 @@ jobs:
           echo "$ALL_VARIABLES" | jq -r '
             to_entries[]
             | select(.key | startswith("SENTINEL_"))
-            | select(.key | IN("SENTINEL_SOURCE", "SENTINEL_PATH", "SENTINEL_PROJECT", "SENTINEL_WEBHOOK_URL", "SENTINEL_HEARTBEAT_URL") | not)
+            | select(.key | IN("SENTINEL_SOURCE", "SENTINEL_PATH", "SENTINEL_PROJECT", "SENTINEL_WEBHOOK_URL", "SENTINEL_HEARTBEAT_URL", "SENTINEL_FIX_TOKEN") | not)
             | select(.value | test("\n") | not)
             | "\(.key)=\(.value)"' >> "$GITHUB_ENV"
       - run: npx --yes "$SENTINEL_SOURCE" "$SENTINEL_PATH"
         env:
           SENTINEL_WEBHOOK_URL: ${{ secrets.SENTINEL_WEBHOOK_URL }}
           SENTINEL_HEARTBEAT_URL: ${{ secrets.SENTINEL_HEARTBEAT_URL }}
+          SENTINEL_FIX_TOKEN: ${{ secrets.SENTINEL_FIX_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}

@@ -148,10 +148,10 @@ test('workspaces and lockfile version 1 are traced too', () => {
 
 test('reads plain and scoped overrides', () => {
   assert.deepEqual(overrideEntries({ a: '1.0.0', '@s/b@^1': '1.2.0', c: { '.': '2.0.0', d: '3.0.0', e: { f: '1.0.0' } } }), [
-    { name: 'a', parent: null, key: '"a"' },
-    { name: '@s/b', parent: null, key: '"@s/b@^1"' },
-    { name: 'c', parent: null, key: '"c"' },
-    { name: 'd', parent: 'c', key: '"d" under "c"' },
+    { name: 'a', parent: null, key: '"a"', path: ['a'] },
+    { name: '@s/b', parent: null, key: '"@s/b@^1"', path: ['@s/b@^1'] },
+    { name: 'c', parent: null, key: '"c"', path: ['c', '.'] },
+    { name: 'd', parent: 'c', key: '"d" under "c"', path: ['c', 'd'] },
   ]);
   assert.deepEqual(overrideEntries(undefined), []);
 });
