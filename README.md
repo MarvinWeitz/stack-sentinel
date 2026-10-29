@@ -110,6 +110,7 @@ its value and where it came from.
 | `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,node,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), node (Node.js versions), npm-overrides (npm overrides no longer needed) |
 | `fix.on` | `--fix-on` | `SENTINEL_FIX_ON` | `info` | Fix findings at or above this severity: `ok`, `info`, `warn`, `error` |
 | `fix.token` |  | `SENTINEL_FIX_TOKEN` |  | Token that opens the pull requests (default: `GITHUB_TOKEN` or `SYSTEM_ACCESSTOKEN`; not read from the config file) |
+| `fix.autoMerge` |  | `SENTINEL_FIX_AUTO_MERGE` | `off` | Let fix pull requests merge by themselves once their checks pass: patch for those that only move to a newer patch of the same version, all for every one: `off`, `patch`, `all` |
 | `fix.branchPrefix` |  | `SENTINEL_FIX_BRANCH_PREFIX` | `stack-sentinel/` | Start of the branch names of fix pull requests |
 | `fix.maxPullRequests` |  | `SENTINEL_FIX_MAX_PULL_REQUESTS` | `5` | Most fix pull requests open at the same time |
 | `ui5.feed` |  | `SENTINEL_UI5_FEED` | `https://ui5.sap.com/versionoverview.json` | Version overview feed: a URL, or a path to a downloaded copy |
@@ -296,6 +297,15 @@ vulnerable packages, which need a lockfile update.
   changed by a token with the "Workflows" permission, which `GITHUB_TOKEN`
   cannot have. Without one, they are left out of the pull request, which
   says so, and the rest goes through.
+- **Auto-merge** is off by default. `SENTINEL_FIX_AUTO_MERGE=patch` turns it
+  on for pull requests that only move to newer patches (UI5 1.148.12 to
+  1.148.13), `all` for every one. The pull request is then merged once its
+  required checks pass, never before: on GitHub this needs "Allow
+  auto-merge" and a branch protection rule with required checks, and since
+  checks do not start for pull requests opened with `GITHUB_TOKEN`, a
+  `SENTINEL_FIX_TOKEN`. On Azure DevOps it sets the pull request to complete
+  by itself once its branch policies pass. If it cannot be turned on, the
+  pull request stays open and the output says why.
 - **At most `fix.maxPullRequests`** (default 5) are open at a time.
 - **Moving to a new release line** (UI5 1.120 to 1.148, Node.js 20 to 24) is a normal pull
   request too. The project's own checks on the pull request are what show

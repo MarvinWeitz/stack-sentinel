@@ -5,7 +5,10 @@
  */
 export function githubProvider({ apiUrl = 'https://api.github.com', repository, token, timeoutSeconds = 30, fetchImpl = fetch }) {
   const [owner, repo] = repository.split('/');
-  const base = `${apiUrl.replace(/\/+$/, '')}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+  const api = apiUrl.replace(/\/+$/, '');
+  const base = `${api}/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+  // GitHub Enterprise Server serves REST under /api/v3 and GraphQL under /api/graphql
+  const graphqlUrl = /\/api\/v3$/.test(api) ? api.replace(/\/v3$/, '/graphql') : `${api}/graphql`;
   const refPath = (branch) => branch.split('/').map(encodeURIComponent).join('/');
 
   async function call(method, path, body, { allow404 = false } = {}) {
@@ -36,6 +39,8 @@ export function githubProvider({ apiUrl = 'https://api.github.com', repository, 
     return res.status === 204 ? null : res.json();
   }
 
+  let info;
+  const repoInfo = async () => (info ??= await call('GET', ''));
   const headOf = async (branch) => (await call('GET', `/git/ref/heads/${refPath(branch)}`, undefined, { allow404: true }))?.object.sha ?? null;
   const state = (pr) => (pr.state === 'open' ? 'open' : pr.merged_at ? 'merged' : 'closed');
 
@@ -43,7 +48,7 @@ export function githubProvider({ apiUrl = 'https://api.github.com', repository, 
     platform: 'github',
 
     async defaultBranch() {
-      return (await call('GET', '')).default_branch;
+      return (await repoInfo()).default_branch;
     },
 
     async readFile(branch, path) {
@@ -57,7 +62,7 @@ export function githubProvider({ apiUrl = 'https://api.github.com', repository, 
       const prs = await call('GET', '/pulls?state=all&sort=updated&direction=desc&per_page=100');
       return prs
         .filter((pr) => pr.head?.ref?.startsWith(prefix) && pr.head.repo?.full_name === `${owner}/${repo}`)
-        .map((pr) => ({ id: pr.number, branch: pr.head.ref, state: state(pr), title: pr.title, body: pr.body ?? '', url: pr.html_url }));
+        .map((pr) => ({ id: pr.number, nodeId: pr.node_id, branch: pr.head.ref, state: state(pr), title: pr.title, body: pr.body ?? '', url: pr.html_url }));
     },
 
     /**
@@ -84,7 +89,32 @@ export function githubProvider({ apiUrl = 'https://api.github.com', repository, 
 
     async createPullRequest({ branch, baseBranch, title, body, draft = false }) {
       const pr = await call('POST', '/pulls', { title, body, head: branch, base: baseBranch, draft });
-      return { id: pr.number, url: pr.html_url };
+      return { id: pr.number, nodeId: pr.node_id, url: pr.html_url };
+    },
+
+    /**
+     * Turns on auto-merge, so GitHub merges the pull request once its required checks pass.
+     * It never merges right away: a branch without required checks gets an error instead.
+     */
+    async enableAutoMerge(pr) {
+      const settings = await repoInfo();
+      if (settings.allow_auto_merge === false) throw new Error('auto-merge is turned off for the repository (Settings -> General -> "Allow auto-merge")');
+      const method = settings.allow_squash_merge !== false ? 'SQUASH' : settings.allow_merge_commit !== false ? 'MERGE' : 'REBASE';
+      const res = await fetchImpl(graphqlUrl, {
+        method: 'POST',
+        headers: { accept: 'application/json', authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          query: 'mutation($id: ID!, $method: PullRequestMergeMethod!) { enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: $method }) { clientMutationId } }',
+          variables: { id: pr.nodeId, method },
+        }),
+        signal: AbortSignal.timeout(timeoutSeconds * 1000),
+      });
+      const json = await res.json().catch(() => ({}));
+      const error = json.errors?.[0]?.message ?? (res.ok ? null : `HTTP ${res.status}`);
+      if (!error || /already/i.test(error)) return;
+      throw new Error(/clean status|protected branch/i.test(error)
+        ? `${error}: auto-merge needs a branch protection rule with required checks on the default branch`
+        : error);
     },
 
     async updatePullRequest(pr, { title, body }) {

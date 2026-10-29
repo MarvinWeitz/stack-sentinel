@@ -10,6 +10,9 @@ release notes.
 
 ## Unreleased
 
+- `SENTINEL_FIX_AUTO_MERGE=patch` (or `all`) turns on auto-merge for fix
+  pull requests that only move to newer patches, so they merge once their
+  required checks pass.
 - A Cloud Foundry app that declares no Node.js version gets
   `"engines.node"` for the line the buildpack keeps longest in the Node.js
   fix pull request.

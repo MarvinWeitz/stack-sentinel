@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { azureProvider } from './azure.js';
 import { githubProvider } from './github.js';
-import { GROUPS, applyGroup, planFixes, pullRequestBody, readMarker } from './plan.js';
+import { GROUPS, applyGroup, onlyPatches, planFixes, pullRequestBody, readMarker } from './plan.js';
 
 /** Changes the files in the scanned folder itself. Returns [{ group, files, skipped }]. */
 export async function applyFixes(report, root, { fixOn, only }) {
@@ -53,7 +53,7 @@ const WORKFLOWS = 'GitHub lets only a token with the "Workflows" permission chan
   + 'To have them changed too, set SENTINEL_FIX_TOKEN to a token with "Contents", "Pull requests" and "Workflows" write access.';
 
 /** Commits one group's changes to its branch and opens or updates its pull request. */
-async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log }) {
+async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge = 'off' }) {
   // the edits are made to the default branch as it is now, not to the files the scan saw
   let { files, applied, skipped } = await applyGroup({ ...group, changes: group.changes.map((c) => ({ ...c, file: inRepo(c.file) })) },
     (file) => provider.readFile(baseBranch, file));
@@ -75,13 +75,29 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
     notes.push(`Not changed: ${left.map((f) => `\`${f}\``).join(', ')}. ${WORKFLOWS}`);
     written = await provider.writeBranch(branch, baseBranch, files, group.title, { open: Boolean(open) });
   }
+  const merge = autoMerge === 'all' || (autoMerge === 'patch' && onlyPatches(applied));
+  if (merge) notes.push('Auto-merge is on: this pull request is merged once its required checks pass (fix.autoMerge).');
   const body = pullRequestBody(group, applied, report, notes);
+  let pr = open;
+  let action = 'created';
   if (open) {
     if (written !== 'unchanged' || open.title !== group.title || open.body !== body) await provider.updatePullRequest(open, { title: group.title, body });
-    return { action: written === 'unchanged' ? 'unchanged' : 'updated' };
+    action = written === 'unchanged' ? 'unchanged' : 'updated';
+  } else {
+    pr = await provider.createPullRequest({ branch, baseBranch, title: group.title, body, draft: group.draft });
   }
-  const pr = await provider.createPullRequest({ branch, baseBranch, title: group.title, body, draft: group.draft });
-  return { action: 'created', created: true, more: { url: pr.url } };
+  const more = open ? {} : { url: pr.url };
+  // a refused auto-merge leaves the pull request open for a person, and is said in the output
+  if (merge && !group.draft) {
+    try {
+      await provider.enableAutoMerge(pr);
+      more.autoMerge = true;
+    } catch (err) {
+      more.autoMerge = false;
+      log(`auto-merge not turned on for "${group.title}": ${err.message}`);
+    }
+  }
+  return { action, created: !open, more };
 }
 
 /**
@@ -90,7 +106,7 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
  * requests on those branches are the memory. Returns what happened to each group:
  * [{ group, title, action: 'created' | 'updated' | 'unchanged' | 'closed' | 'skipped', url?, reason? }].
  */
-export async function openPullRequests(report, root, { provider, fixOn, only, branchPrefix, maxPullRequests, log = () => {} }) {
+export async function openPullRequests(report, root, { provider, fixOn, only, branchPrefix, maxPullRequests, autoMerge = 'off', log = () => {} }) {
   const prefix = relative(repositoryRoot(root), root).split(sep).filter(Boolean).join('/');
   const inRepo = (file) => (prefix ? `${prefix}/${file}` : file);
   const groups = planFixes(report.findings, { fixOn, only });
@@ -127,7 +143,7 @@ export async function openPullRequests(report, root, { provider, fixOn, only, br
     }
     // one group that fails does not stop the others; the run still ends as a tool failure
     try {
-      const done = await writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log });
+      const done = await writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge });
       if (done.created) openCount++;
       result(done.action, done.more);
     } catch (err) {

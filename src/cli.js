@@ -138,7 +138,8 @@ function printText(report) {
     for (const reason of f.skipped) console.log(`          not changed: ${reason}`);
   }
   for (const pr of report.pullRequests ?? []) {
-    console.log(`  pull request ${pr.action}: ${pr.title}${pr.url ? `  ${pr.url}` : ''}${pr.reason ? ` (${pr.reason})` : ''}`);
+    const merge = pr.autoMerge === true ? ', auto-merge on' : pr.autoMerge === false ? ', auto-merge could not be turned on' : '';
+    console.log(`  pull request ${pr.action}: ${pr.title}${pr.url ? `  ${pr.url}` : ''}${pr.reason ? ` (${pr.reason})` : ''}${merge}`);
   }
 }
 
@@ -209,7 +210,7 @@ export async function main(argv, env = process.env) {
       const provider = detectProvider(env, { token: settings.fix.token, timeoutSeconds: settings.timeoutSeconds });
       report.pullRequests = await openPullRequests(report, root, {
         provider, fixOn: settings.fix.on, only: settings.fix.groups, branchPrefix: settings.fix.branchPrefix, maxPullRequests: settings.fix.maxPullRequests,
-        log: (line) => console.error(`stack-sentinel: ${line}`),
+        autoMerge: settings.fix.autoMerge, log: (line) => console.error(`stack-sentinel: ${line}`),
       });
       const failed = report.pullRequests.filter((pr) => pr.action === 'failed');
       if (failed.length) throw new Error(failed.map((pr) => `${pr.title}: ${pr.reason}`).join(' '));

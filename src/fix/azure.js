@@ -106,6 +106,18 @@ export function azureProvider({ collectionUri, project, repositoryId, token, tim
       return { id: pr.pullRequestId, url: await webUrl(pr.pullRequestId) };
     },
 
+    /** Sets the pull request to complete by itself once its branch policies pass. */
+    async enableAutoMerge(pr) {
+      const res = await fetchImpl(`${collectionUri.replace(/\/*$/, '/')}_apis/connectionData`, {
+        headers: { accept: 'application/json', authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(timeoutSeconds * 1000),
+      });
+      if (!res.ok) throw new Error(`Azure DevOps answered GET /_apis/connectionData with HTTP ${res.status}`);
+      const me = (await res.json()).authenticatedUser?.id;
+      if (!me) throw new Error('Azure DevOps did not say who the token belongs to');
+      await call('PATCH', `/pullrequests/${pr.id}`, { autoCompleteSetBy: { id: me }, completionOptions: { mergeStrategy: 'squash', deleteSourceBranch: true } });
+    },
+
     async updatePullRequest(pr, { title, body }) {
       await call('PATCH', `/pullrequests/${pr.id}`, { title, description: fit(body) });
     },

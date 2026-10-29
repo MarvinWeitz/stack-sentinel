@@ -38,6 +38,8 @@ export const SETTINGS = [
   { key: 'fix.on', type: 'enum', values: LEVELS, flag: 'fix-on', default: 'info', desc: 'Fix findings at or above this severity' },
   { key: 'fix.token', type: 'string', env: 'SENTINEL_FIX_TOKEN', noConfig: true, secret: true,
     desc: 'Token that opens the pull requests (default: GITHUB_TOKEN or SYSTEM_ACCESSTOKEN; not read from the config file)' },
+  { key: 'fix.autoMerge', type: 'enum', values: ['off', 'patch', 'all'], default: 'off',
+    desc: 'Let fix pull requests merge by themselves once their checks pass: patch for those that only move to a newer patch of the same version, all for every one' },
   { key: 'fix.branchPrefix', type: 'string', default: 'stack-sentinel/', desc: 'Start of the branch names of fix pull requests' },
   { key: 'fix.maxPullRequests', type: 'int', default: 5, desc: 'Most fix pull requests open at the same time' },
 

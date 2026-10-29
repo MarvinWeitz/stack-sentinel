@@ -9,7 +9,7 @@ import { applyFix } from '../src/fix/edits.js';
 import { githubProvider } from '../src/fix/github.js';
 import { azureProvider } from '../src/fix/azure.js';
 import { applyFixes, detectProvider, openPullRequests } from '../src/fix/index.js';
-import { applyGroup, marker, planFixes, pullRequestBody, readMarker } from '../src/fix/plan.js';
+import { applyGroup, marker, onlyPatches, planFixes, pullRequestBody, readMarker } from '../src/fix/plan.js';
 import { teamsPayload } from '../src/notifiers/webhook.js';
 import { resolveSettings } from '../src/settings.js';
 
@@ -255,7 +255,7 @@ test('GitHub: finds this repository\'s pull requests by branch, and explains a r
     ['POST', /\/pulls$/, { message: 'GitHub Actions is not permitted to create or approve pull requests.' }, 403],
   ]);
   const gh = githubProvider({ repository: 'o/r', token: 't', fetchImpl: impl });
-  assert.deepEqual(await gh.findPullRequests('stack-sentinel/'), [{ id: 2, branch: 'stack-sentinel/ui5', state: 'closed', title: 't', body: '', url: 'u2' }]);
+  assert.deepEqual(await gh.findPullRequests('stack-sentinel/'), [{ id: 2, nodeId: undefined, branch: 'stack-sentinel/ui5', state: 'closed', title: 't', body: '', url: 'u2' }]);
   await assert.rejects(gh.createPullRequest({ branch: 'b', baseBranch: 'main', title: 't', body: '' }), /HTTP 403: GitHub Actions is not permitted.*Allow GitHub Actions to create and approve pull requests/);
 });
 
@@ -400,4 +400,43 @@ test('a local Fiori preview without a version is pinned to what the app builds w
   const note = report.findings.find((f) => f.file === 'app1/ui5-mock.yaml');
   // app1 builds with nothing pinned in its own folder, so the recommended version is used
   assert.deepEqual(note.fix, { kind: 'ui5-preview-missing', to: '1.148.12' });
+});
+
+test('auto-merge: only for newer patches with "patch", and a refusal leaves the pull request open', async () => {
+  const change = (version, to) => ({ finding: { version, fix: { to } } });
+  assert.equal(onlyPatches([change('1.148.12', '1.148.13'), change('1.136.5', '1.136.9')]), true);
+  assert.equal(onlyPatches([change('1.148.12', '1.148.13'), change('1.120.51', '1.148.13')]), false);
+  assert.equal(onlyPatches([change(undefined, '1.148.13')]), false); // a pin added where there was none
+  assert.equal(onlyPatches([change('^20', '^26')]), false);
+  assert.equal(onlyPatches([]), false);
+
+  const report = await ui5Report('app');
+  const merged = [];
+  const provider = fakeProvider(await appFiles());
+  provider.enableAutoMerge = async (pr) => { merged.push(pr.id); };
+  // the app moves to a new release line, so "patch" leaves it alone and "all" does not
+  assert.equal((await openPullRequests(report, fixture('app'), { ...opts(provider), autoMerge: 'patch' }))[0].autoMerge, undefined);
+  const [all] = await openPullRequests(report, fixture('app'), { ...opts(provider), autoMerge: 'all' });
+  assert.equal(all.autoMerge, true);
+  assert.deepEqual(merged, [1]);
+  assert.match(provider.prs[0].body, /Auto-merge is on/);
+  provider.enableAutoMerge = async () => { throw new Error('no required checks'); };
+  const logs = [];
+  const [refused] = await openPullRequests(report, fixture('app'), { ...opts(provider), autoMerge: 'all', log: (l) => logs.push(l) });
+  assert.equal(refused.autoMerge, false);
+  assert.match(logs.join('\n'), /auto-merge not turned on for "Update UI5 to 1\.148\.12": no required checks/);
+});
+
+test('GitHub: auto-merge through GraphQL, with a merge method the repository allows', async () => {
+  const { impl, seen } = fakeFetch([
+    ['GET', /\/repos\/o\/r$/, { default_branch: 'main', allow_auto_merge: true, allow_squash_merge: false, allow_merge_commit: true }],
+    ['POST', /\/graphql$/, (url) => (seen.filter(([m]) => m === 'POST').length === 1 ? { data: {} } : { errors: [{ message: 'Pull request is in clean status' }] })],
+  ]);
+  const gh = githubProvider({ repository: 'o/r', token: 't', fetchImpl: impl });
+  await gh.enableAutoMerge({ nodeId: 'PR_1' });
+  assert.deepEqual(seen.at(-1)[2].variables, { id: 'PR_1', method: 'MERGE' });
+  assert.ok(seen.at(-1)[1] === 'https://api.github.com/graphql');
+  await assert.rejects(gh.enableAutoMerge({ nodeId: 'PR_1' }), /clean status: auto-merge needs a branch protection rule with required checks/);
+  const ghes = fakeFetch([['GET', /\/repos\/o\/r$/, { allow_auto_merge: false }]]);
+  await assert.rejects(githubProvider({ apiUrl: 'https://ghe.example/api/v3', repository: 'o/r', token: 't', fetchImpl: ghes.impl }).enableAutoMerge({ nodeId: 'x' }), /Allow auto-merge/);
 });

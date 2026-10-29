@@ -585,6 +585,13 @@ user"). Its cost: GitHub starts no workflows for pull requests it opens, so
 their checks do not run until someone pushes or reopens. A GitHub App or
 fine-grained token in `SENTINEL_FIX_TOKEN` avoids that.
 
+**Auto-merge is opt-in and waits for checks.** `fix.autoMerge` (`patch` or
+`all`) turns on the platform's own auto-merge, which merges once required
+checks or branch policies pass. A pull request is never merged directly: a
+repository without required checks gets a message, not a merge. `patch`
+means every change moves to a newer patch of the same release line; adding
+a pin or moving to another line is not a patch.
+
 **Major version moves are normal pull requests.** Moving to a new UI5 release
 line is opened like a patch; the project's own checks decide.
 

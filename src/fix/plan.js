@@ -128,3 +128,15 @@ export function pullRequestBody(group, applied, report, notes = []) {
     marker(group),
   ].join('\n');
 }
+
+/**
+ * Does a set of changes only move to newer patches of the versions in use (UI5 1.148.12 to
+ * 1.148.13)? Changes that add, remove or move to another release line do not.
+ */
+export function onlyPatches(applied) {
+  const exact = (v) => /^\d+\.\d+\.\d+$/.exec(v ?? '')?.[0].split('.').map(Number);
+  return applied.length > 0 && applied.every(({ finding }) => {
+    const [from, to] = [exact(finding.version), exact(finding.fix.to)];
+    return from && to && from[0] === to[0] && from[1] === to[1] && to[2] > from[2];
+  });
+}
