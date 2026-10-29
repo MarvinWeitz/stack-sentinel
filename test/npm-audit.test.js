@@ -217,3 +217,17 @@ test('scans every lockfile, asks the registry once per lockfile, and reports a c
   const broken = await scan({ root: fixture('audit-app'), config: { checks: ['npm-audit'] }, postJsonImpl: async () => [1] });
   assert.match(broken.findings[0].message, /Check failed to run: the registry gave an unexpected answer/);
 });
+
+test('a fix for the fix pull requests only where npm can do it alone, after raising the project\'s own range', () => {
+  const findings = madeFindings('apps/orders/package-lock.json');
+  assert.deepEqual(byName(findings, 'loose').fix, { kind: 'npm-audit', name: 'loose', to: '2.0.5' });
+  assert.equal(byName(findings, 'vuln').fix, undefined); // router stands in the way
+  assert.equal(byName(findings, 'packed').fix, undefined); // bundled
+  const pinned = (range) => ({ lockfileVersion: 3, packages: { '': { dependencies: { vuln: range } }, 'node_modules/vuln': { version: '1.0.0' } } });
+  const fixOf = (range) => evaluate('a/package-lock.json', installedPackages(pinned(range)), madeAdvisories, policy, dependencyGraph(pinned(range)))[0].fix;
+  assert.deepEqual(fixOf('1.0.0'), { kind: 'npm-audit', name: 'vuln', to: '1.1.0', raise: [{ manifest: 'a/package.json', from: '1.0.0', to: '1.1.0' }] });
+  assert.equal(fixOf('~1.0.0').raise[0].to, '~1.1.0');
+  assert.equal(fixOf('>=1.0.0 <1.1.0').raise[0].to, '^1.1.0');
+  const workspaces = { lockfileVersion: 3, packages: { '': { workspaces: ['p'] }, p: { name: 'p', version: '1.0.0', dependencies: { vuln: '^1.0.0' } }, 'node_modules/vuln': { version: '1.0.0' } } };
+  assert.equal(evaluate('package-lock.json', installedPackages(workspaces), madeAdvisories, policy, dependencyGraph(workspaces))[0].fix, undefined);
+});

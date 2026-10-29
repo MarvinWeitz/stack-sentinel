@@ -19,7 +19,9 @@ export function applyFix(text, finding) {
     case 'ui5-workzone': return workzone(text, version, fix.to);
     case 'ui5-workzone-missing': return workzoneMissing(text, fix.to);
     case 'npm-override-remove': return removeOverride(text, fix.path);
-    case 'cap-upgrade': return dependency(text, fix.name, fix.from, fix.to);
+    case 'cap-upgrade':
+    case 'npm-dependency': return dependency(text, fix.name, fix.from, fix.to);
+    case 'npm-audit': return { text }; // npm moves it when the lockfile is brought up to date
     case 'node-engines': return engines(text, version, fix.to);
     case 'node-engines-missing': return enginesMissing(text, fix.to);
     case 'node-version-file': return versionFile(text, version, fix.to);

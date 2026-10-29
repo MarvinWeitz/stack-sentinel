@@ -13,6 +13,8 @@ export const GROUPS = [
   { id: 'npm-overrides', checks: ['npm-audit'], kinds: /^npm-override-/ },
   // a new major version can need code changes, so these open as drafts, and only when asked for
   { id: 'cap', checks: ['cap-version'], kinds: /^cap-/, draft: true, lockfile: 'install', optIn: true },
+  // runs npm, so only when asked for
+  { id: 'npm-audit', checks: ['npm-audit'], kinds: /^npm-audit$/, lockfile: 'audit', optIn: true },
 ];
 
 /** "1.136.11" -> [1, 136, 11]; "1.136.x" -> [1, 136, Infinity]. */
@@ -43,7 +45,12 @@ export function planFixes(findings, { fixOn = 'info', only = GROUPS.filter((g) =
       if (wins) byPlace.set(place, f);
     }
     if (byPlace.size === 0) continue;
-    const changes = [...byPlace.values()].map((finding) => ({ file: finding.file, finding }))
+    // a range in package.json that stands in the way is raised first, then npm moves the lockfile
+    const changes = [...byPlace.values()].flatMap((finding) => [{ file: finding.file, finding },
+      ...(finding.fix.raise ?? []).map((r) => ({
+        file: r.manifest,
+        finding: { ...finding, file: r.manifest, version: r.from, fix: { kind: 'npm-dependency', name: finding.fix.name, from: r.from, to: r.to } },
+      }))])
       .sort((a, b) => a.file.localeCompare(b.file));
     groups.push({ id: def.id, checks: def.checks, draft: def.draft, lockfile: def.lockfile, ...describe(def.id, changes), changes });
   }
@@ -71,6 +78,12 @@ function describe(id, changes) {
     const majors = [...new Set(changes.map((c) => /\d+/.exec(c.finding.fix.to)[0]))];
     const title = majors.length > 1 ? 'Upgrade CAP packages' : `Upgrade ${names.length === 1 ? names[0] : 'CAP'} to ${majors[0]}`;
     return { title, signature: `cap ${moves.join(' ')}` };
+  }
+  if (id === 'npm-audit') {
+    const fixes = changes.filter((c) => c.finding.fix.kind === 'npm-audit');
+    const moves = [...new Set(fixes.map((c) => `${c.file}:${c.finding.fix.name}@${c.finding.fix.to}`))].sort();
+    const names = [...new Set(fixes.map((c) => c.finding.fix.name))];
+    return { title: names.length === 1 ? `Update ${names[0]} to ${fixes[0].finding.fix.to}` : `Update ${names.length} vulnerable npm packages`, signature: `npm-audit ${moves.join(' ')}` };
   }
   const keys = changes.map((c) => `${c.file}:${c.finding.fix.path.join('>')}`).sort();
   const n = changes.length;
@@ -125,6 +138,8 @@ export function pullRequestBody(group, applied, report, notes = []) {
     'npm-overrides': ['', 'Run `npm install` afterwards to check that the lockfile still agrees.'],
     cap: ['', 'A new major version can need changes to the code: read the [release notes](https://cap.cloud.sap/docs/releases/) '
       + 'and run the tests before merging. This is why it opens as a draft.'],
+    'npm-audit': ['', 'The lockfile was written by `npm audit fix --package-lock-only --ignore-scripts`, which can move other packages '
+      + 'within their ranges too. Run the tests before merging.'],
   }[group.id] ?? [];
   return [
     `stack-sentinel found ${applied.length === 1 ? 'a version' : 'versions'} to change in ${report.project}.`,

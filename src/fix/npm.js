@@ -24,6 +24,19 @@ export function npm(args, cwd, timeoutSeconds) {
   });
 }
 
+const older = (a, b) => {
+  const [pa, pb] = [a, b].map((v) => String(v).split(/[.+-]/).slice(0, 3).map((n) => Number(n) || 0));
+  return pa[0] - pb[0] || pa[1] - pb[1] || pa[2] - pb[2];
+};
+
+/** The versions of `name` a lockfile still holds that are older than `to`. */
+function stillOlder(lockText, name, to) {
+  const packages = JSON.parse(lockText).packages ?? {};
+  return Object.entries(packages)
+    .filter(([path, p]) => (path === `node_modules/${name}` || path.endsWith(`/node_modules/${name}`)) && p.version && older(p.version, to) < 0)
+    .map(([, p]) => p.version);
+}
+
 /** The first line npm wrote about what went wrong. */
 const reasonOf = (err) => (String(err.stderr ?? '').split('\n').find((l) => /\berr(or)?\b/i.test(l)) ?? err.message).replace(/^npm (error|ERR!)\s*/i, '').trim();
 
@@ -31,25 +44,35 @@ const reasonOf = (err) => (String(err.stderr ?? '').split('\n').find((l) => /\be
  * Brings the package-lock.json next to each changed package.json up to date, by running npm
  * in a temporary folder that holds only package.json, package-lock.json and .npmrc. `files`
  * are the group's changed files (path -> text), `read(path)` gives the others as they are
- * (null when missing). Returns { files } with the lockfiles added, and { skipped } with the
- * lockfiles that could not be brought up to date and why.
+ * (null when missing). Returns { files } with the lockfiles added, { skipped } with the
+ * lockfiles that could not be brought up to date and why, and for "audit" { unfixed }: the
+ * changes npm did not carry out. A package.json is only changed with its lockfile then, as
+ * a raised range without the lockfile to match would make "npm ci" fail.
  */
 export async function refreshLockfiles(group, files, read, { run = npm, timeoutSeconds = 300 } = {}) {
   const out = new Map(files);
   const skipped = [];
+  const unfixed = [];
   const at = (dir, name) => (dir === '.' ? name : `${dir}/${name}`);
   for (const dir of [...new Set(group.changes.map((c) => posix.dirname(c.file)))].sort()) {
     const lockPath = at(dir, 'package-lock.json');
+    const here = group.changes.filter((c) => posix.dirname(c.file) === dir);
+    const giveUp = (reason) => {
+      skipped.push({ file: lockPath, reason });
+      if (group.lockfile !== 'audit') return;
+      out.delete(at(dir, 'package.json'));
+      unfixed.push(...here);
+    };
     const lock = await read(lockPath);
     if (lock == null) {
       // a package of a workspace has its lockfile further up, which npm can only update with all of it
-      for (let up = dir; up !== '.'; ) {
+      let top = null;
+      for (let up = dir; up !== '.' && top == null; ) {
         up = posix.dirname(up);
-        if (await read(at(up, 'package-lock.json')) != null) {
-          skipped.push({ file: at(up, 'package-lock.json'), reason: `it covers the whole workspace, so run "npm install" in ${up === '.' ? 'the top folder' : up} yourself` });
-          break;
-        }
+        if (await read(at(up, 'package-lock.json')) != null) top = up;
       }
+      if (top != null) giveUp(`the lockfile in ${top === '.' ? 'the top folder' : top} covers the whole workspace, so run "npm install" there yourself`);
+      else if (group.lockfile === 'audit') giveUp('there is no package-lock.json');
       continue;
     }
     const manifest = out.get(at(dir, 'package.json')) ?? await read(at(dir, 'package.json'));
@@ -58,7 +81,7 @@ export async function refreshLockfiles(group, files, read, { run = npm, timeoutS
       workspaces = JSON.parse(manifest ?? 'null')?.workspaces;
     } catch { /* checked below */ }
     if (manifest == null || workspaces) {
-      skipped.push({ file: lockPath, reason: manifest == null ? 'there is no package.json next to it' : `it covers npm workspaces, so run "npm install" in ${dir === '.' ? 'the top folder' : dir} yourself` });
+      giveUp(manifest == null ? 'there is no package.json next to it' : `it covers npm workspaces, so run "npm install" in ${dir === '.' ? 'the top folder' : dir} yourself`);
       continue;
     }
     const npmrc = await read(at(dir, '.npmrc'));
@@ -74,15 +97,25 @@ export async function refreshLockfiles(group, files, read, { run = npm, timeoutS
           if (check) throw err;
         }
       }
-      for (const [name, before] of [['package-lock.json', lock], ['package.json', manifest]]) {
+      const next = await readFile(join(tmp, 'package-lock.json'), 'utf8');
+      const left = here.filter((c) => c.finding.fix.kind === 'npm-audit' && stillOlder(next, c.finding.fix.name, c.finding.fix.to).length > 0);
+      unfixed.push(...left);
+      // a raised range is kept only when npm moved the package it was raised for
+      const kept = here.filter((c) => !left.some((l) => l.finding.fix.name === c.finding.fix.name) && c.finding.fix.kind === 'npm-audit');
+      if (group.lockfile === 'audit' && kept.length === 0) {
+        out.delete(at(dir, 'package.json'));
+        unfixed.push(...here.filter((c) => !left.includes(c)));
+        continue;
+      }
+      for (const [name, before] of [['package-lock.json', lock], ['package.json', out.get(at(dir, 'package.json')) ?? manifest]]) {
         const after = await readFile(join(tmp, name), 'utf8');
         if (after !== before) out.set(at(dir, name), after);
       }
     } catch (err) {
-      skipped.push({ file: lockPath, reason: `npm could not update it: ${reasonOf(err)}` });
+      giveUp(`npm could not update it: ${reasonOf(err)}`);
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
   }
-  return { files: out, skipped };
+  return { files: out, skipped, unfixed };
 }

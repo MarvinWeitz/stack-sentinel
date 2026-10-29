@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -486,27 +486,71 @@ test('CAP: the pull request is a draft, says to read the release notes, and leav
   assert.deepEqual(ran, []);
 });
 
+const lockWith = (version) => `${JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/a': { version } } })}\n`;
+
 test('lockfiles: npm runs in a folder with package.json, package-lock.json and .npmrc, and its lockfile is kept', async () => {
-  const disk = { 'app/package-lock.json': '{"lockfileVersion":3}\n', 'app/.npmrc': 'registry=https://npm.example/\n' };
-  const group = { lockfile: 'audit', changes: [{ file: 'app/package.json' }] };
+  const disk = { 'app/package-lock.json': lockWith('2.0.0'), 'app/.npmrc': 'registry=https://npm.example/\n' };
+  const audit = { file: 'app/package-lock.json', finding: { fix: { kind: 'npm-audit', name: 'a', to: '2.0.5' } } };
+  const raise = { file: 'app/package.json', finding: { fix: { kind: 'npm-dependency', name: 'a', from: '2.0.0', to: '2.0.5' } } };
+  const group = { lockfile: 'audit', changes: [audit, raise] };
+  const edited = () => new Map([['app/package.json', '{"dependencies":{"a":"2.0.5"}}']]);
+  const read = async (f) => disk[f] ?? null;
   const seen = [];
-  const run = async (args, cwd) => {
+  const npmTo = (version) => async (args, cwd) => {
     seen.push([args[0], (await readFile(join(cwd, '.npmrc'), 'utf8')).trim(), JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8')).dependencies]);
     if (args[0] === 'audit') {
-      await import('node:fs/promises').then((fs) => fs.writeFile(join(cwd, 'package-lock.json'), '{"lockfileVersion":3,"fixed":true}\n'));
+      await writeFile(join(cwd, 'package-lock.json'), lockWith(version));
       throw new Error('exit 1'); // npm audit fix fails while something is left unfixed
     }
   };
-  const { files, skipped } = await refreshLockfiles(group, new Map([['app/package.json', '{"dependencies":{"a":"^2"}}']]), async (f) => disk[f] ?? null, { run });
-  assert.deepEqual(skipped, []);
-  assert.deepEqual(seen, [['install', 'registry=https://npm.example/', { a: '^2' }], ['audit', 'registry=https://npm.example/', { a: '^2' }]]);
-  assert.equal(files.get('app/package-lock.json'), '{"lockfileVersion":3,"fixed":true}\n');
+  const done = await refreshLockfiles(group, edited(), read, { run: npmTo('2.0.5') });
+  assert.deepEqual([done.skipped, done.unfixed], [[], []]);
+  assert.deepEqual(seen, [['install', 'registry=https://npm.example/', { a: '2.0.5' }], ['audit', 'registry=https://npm.example/', { a: '2.0.5' }]]);
+  assert.equal(done.files.get('app/package-lock.json'), lockWith('2.0.5'));
+  assert.equal(done.files.get('app/package.json'), '{"dependencies":{"a":"2.0.5"}}');
 
-  // a failing install leaves the lockfile as it was, and says why
-  const failing = async () => { throw Object.assign(new Error('x'), { stderr: 'npm error code ETARGET\nnpm error notarget No matching version found for a@^2.\n' }); };
-  const second = await refreshLockfiles({ ...group, lockfile: 'install' }, new Map([['app/package.json', '{}']]), async (f) => disk[f] ?? null, { run: failing });
-  assert.equal(second.files.has('app/package-lock.json'), false);
-  assert.match(second.skipped[0].reason, /npm could not update it: code ETARGET/);
-  // no lockfile: nothing to do
-  assert.deepEqual((await refreshLockfiles(group, new Map(), async () => null, { run: failing })).skipped, []);
+  // npm leaves it where it was: nothing is changed, not even the raised range
+  const stuck = await refreshLockfiles(group, edited(), read, { run: npmTo('2.0.0') });
+  assert.equal(stuck.files.size, 0);
+  assert.deepEqual(stuck.unfixed, [audit, raise]);
+
+  // a failing install leaves both as they were, and says why
+  const failing = async () => { throw Object.assign(new Error('x'), { stderr: 'npm error code ETARGET\nnpm error notarget No matching version found for a@2.0.5.\n' }); };
+  const failed = await refreshLockfiles(group, edited(), read, { run: failing });
+  assert.equal(failed.files.size, 0);
+  assert.match(failed.skipped[0].reason, /npm could not update it: code ETARGET/);
+  // without a lockfile, a CAP upgrade still changes package.json
+  const cap = await refreshLockfiles({ lockfile: 'install', changes: [{ file: 'x/package.json', finding: { fix: { kind: 'cap-upgrade' } } }] },
+    new Map([['x/package.json', '{}']]), async () => null, { run: failing });
+  assert.deepEqual([cap.skipped, [...cap.files.keys()]], [[], ['x/package.json']]);
+});
+
+test('npm audit: one pull request with the raised range and the lockfile npm wrote; what npm left is not listed', async () => {
+  const audit = (name, version, to, raise) => ({
+    check: 'npm-audit', severity: 'error', file: 'package-lock.json', version, message: `${name} ${version} is vulnerable.`,
+    fix: { kind: 'npm-audit', name, to, ...(raise ? { raise } : {}) },
+  });
+  const findings = [audit('lodash', '4.17.20', '4.17.21', [{ manifest: 'package.json', from: '4.17.20', to: '4.17.21' }]), audit('minimist', '1.2.5', '1.2.6')];
+  assert.equal(planFixes(findings).length, 0);
+  const [group] = planFixes(findings, { only: ['npm-audit'] });
+  assert.equal(group.title, 'Update 2 vulnerable npm packages');
+  assert.deepEqual(group.changes.map((c) => [c.file, c.finding.fix.kind]), [['package-lock.json', 'npm-audit'], ['package-lock.json', 'npm-audit'], ['package.json', 'npm-dependency']]);
+
+  const lock = (lodash, minimist) => `${JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/lodash': { version: lodash }, 'node_modules/minimist': { version: minimist } } })}\n`;
+  const root = await mkdtemp(join(tmpdir(), 'sentinel-audit-'));
+  await mkdir(join(root, '.git'));
+  const provider = fakeProvider({ 'package.json': '{\n  "dependencies": {\n    "lodash": "4.17.20"\n  }\n}\n', 'package-lock.json': lock('4.17.20', '1.2.5') });
+  // npm moves lodash once its range allows it, but leaves minimist
+  const runNpm = async (args, cwd) => { if (args[0] === 'audit') await writeFile(join(cwd, 'package-lock.json'), lock('4.17.21', '1.2.5')); };
+  const report = { project: 'p', toolVersion: '1', findings, checks: { run: ['npm-audit'] } };
+  const [result] = await openPullRequests(report, root, { ...opts(provider), only: ['npm-audit'], runNpm });
+  await rm(root, { recursive: true });
+  assert.equal(result.action, 'created');
+  const written = new Map(JSON.parse(provider.branches.get('stack-sentinel/npm-audit')));
+  assert.match(written.get('package.json'), /"lodash": "4\.17\.21"/);
+  assert.equal(written.get('package-lock.json'), lock('4.17.21', '1.2.5'));
+  const { body } = provider.prs[0];
+  assert.match(body, /lodash 4\.17\.20 is vulnerable/);
+  assert.doesNotMatch(body, /\| minimist/);
+  assert.match(body, /Not changed: minimist in `package-lock\.json`, because npm did not move it to 1\.2\.6/);
 });

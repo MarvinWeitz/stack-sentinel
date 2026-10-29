@@ -16,7 +16,8 @@ export async function applyFixes(report, root, { fixOn, only, runNpm }) {
     if (group.lockfile && applied.length) {
       const refreshed = await refreshLockfiles({ ...group, changes: applied }, files, read, { run: runNpm });
       files = refreshed.files;
-      notes.push(...refreshed.skipped.map((s) => `${s.file}: ${s.reason}`));
+      notes.push(...refreshed.skipped.map((s) => `${s.file}: ${s.reason}`),
+        ...refreshed.unfixed.filter((c) => c.finding.fix.kind === 'npm-audit').map((c) => `${c.file}: npm did not move ${c.finding.fix.name} to ${c.finding.fix.to}`));
     }
     for (const [file, text] of files) await writeFile(join(root, file), text);
     results.push({ group: group.id, title: group.title, files: [...files.keys()], skipped: notes });
@@ -66,17 +67,22 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
   const read = (file) => provider.readFile(baseBranch, file);
   let { files, applied, skipped } = await applyGroup({ ...group, changes: group.changes.map((c) => ({ ...c, file: inRepo(c.file) })) }, read);
   for (const s of skipped) log(`not changed: ${s.change.file}: ${s.reason}`);
-  if (files.size === 0) return { action: 'skipped', more: { reason: 'none of the changes apply to the default branch' } };
   let written;
   const notes = [];
-  if (group.lockfile) {
+  if (group.lockfile && applied.length) {
     const refreshed = await refreshLockfiles({ ...group, changes: applied }, files, read, { run: runNpm });
     files = refreshed.files;
     for (const s of refreshed.skipped) {
       log(`not changed: ${s.file}: ${s.reason}`);
       notes.push(`Not changed: \`${s.file}\`, because ${s.reason}.`);
     }
+    for (const c of refreshed.unfixed.filter((u) => u.finding.fix.kind === 'npm-audit')) {
+      log(`not changed: ${c.file}: npm did not move ${c.finding.fix.name} to ${c.finding.fix.to}`);
+      notes.push(`Not changed: ${c.finding.fix.name} in \`${c.file}\`, because npm did not move it to ${c.finding.fix.to}: see the finding for what stands in the way.`);
+    }
+    applied = applied.filter((c) => !refreshed.unfixed.includes(c));
   }
+  if (files.size === 0) return { action: 'skipped', more: { reason: 'none of the changes apply to the default branch' } };
   try {
     written = await provider.writeBranch(branch, baseBranch, files, group.title, { open: Boolean(open) });
   } catch (err) {
