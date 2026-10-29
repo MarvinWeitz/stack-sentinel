@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
+import { applyFix } from './edits.js';
 
 const INSTALL = ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'];
 
@@ -35,6 +36,30 @@ function stillOlder(lockText, name, to) {
   return Object.entries(packages)
     .filter(([path, p]) => (path === `node_modules/${name}` || path.endsWith(`/node_modules/${name}`)) && p.version && older(p.version, to) < 0)
     .map(([, p]) => p.version);
+}
+
+/** Every version of `name` a lockfile holds, oldest first. */
+function versionsIn(lockText, name) {
+  const packages = JSON.parse(lockText).packages ?? {};
+  return Object.entries(packages)
+    .filter(([path, p]) => (path === `node_modules/${name}` || path.endsWith(`/node_modules/${name}`)) && p.version)
+    .map(([, p]) => p.version).sort(older);
+}
+
+/**
+ * The first fixed version an advisory names need not be published (lodash's says 4.17.24,
+ * the next release was 4.18.0), so a raised range is moved to the oldest release at or
+ * above it that the registry has, keeping its style. Null when npm cannot tell.
+ */
+async function published(run, spec, name, cwd, timeoutSeconds) {
+  const base = spec.replace(/^[\^~]/, '');
+  try {
+    const out = JSON.parse(await run(['view', `${name}@>=${base}`, 'version', '--json'], cwd, timeoutSeconds) ?? 'null');
+    const first = Array.isArray(out) ? out[0] : out;
+    return typeof first === 'string' ? spec.replace(base, first) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The first line npm wrote about what went wrong. */
@@ -87,9 +112,17 @@ export async function refreshLockfiles(group, files, read, { run = npm, timeoutS
     const npmrc = await read(at(dir, '.npmrc'));
     const tmp = await mkdtemp(join(tmpdir(), 'stack-sentinel-'));
     try {
-      await writeFile(join(tmp, 'package.json'), manifest);
-      await writeFile(join(tmp, 'package-lock.json'), lock);
       if (npmrc != null) await writeFile(join(tmp, '.npmrc'), npmrc);
+      let text = manifest;
+      for (const c of here.filter((h) => h.finding.fix.kind === 'npm-dependency')) {
+        const spec = await published(run, c.finding.fix.to, c.finding.fix.name, tmp, timeoutSeconds);
+        const moved = spec && spec !== c.finding.fix.to ? applyFix(text, { fix: { ...c.finding.fix, from: c.finding.fix.to, to: spec } }) : {};
+        if (!moved.text) continue;
+        text = moved.text;
+        c.finding = { ...c.finding, fix: { ...c.finding.fix, to: spec } };
+      }
+      await writeFile(join(tmp, 'package.json'), text);
+      await writeFile(join(tmp, 'package-lock.json'), lock);
       for (const { args, check = true } of COMMANDS[group.lockfile]) {
         try {
           await run(args, tmp, timeoutSeconds);
@@ -100,6 +133,11 @@ export async function refreshLockfiles(group, files, read, { run = npm, timeoutS
       const next = await readFile(join(tmp, 'package-lock.json'), 'utf8');
       const left = here.filter((c) => c.finding.fix.kind === 'npm-audit' && stillOlder(next, c.finding.fix.name, c.finding.fix.to).length > 0);
       unfixed.push(...left);
+      // the pull request says which version npm moved it to, not the advisory's lower bound
+      for (const c of here.filter((h) => h.finding.fix.kind === 'npm-audit' && !left.includes(h))) {
+        const now = versionsIn(next, c.finding.fix.name)[0];
+        if (now) c.finding = { ...c.finding, fix: { ...c.finding.fix, to: now } };
+      }
       // a raised range is kept only when npm moved the package it was raised for
       const kept = here.filter((c) => !left.some((l) => l.finding.fix.name === c.finding.fix.name) && c.finding.fix.kind === 'npm-audit');
       if (group.lockfile === 'audit' && kept.length === 0) {

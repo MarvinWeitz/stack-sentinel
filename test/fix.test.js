@@ -519,6 +519,15 @@ test('lockfiles: npm runs in a folder with package.json, package-lock.json and .
   const failed = await refreshLockfiles(group, edited(), read, { run: failing });
   assert.equal(failed.files.size, 0);
   assert.match(failed.skipped[0].reason, /npm could not update it: code ETARGET/);
+  // the advisory's first fixed version was never published: the range moves to the next release
+  const view = async (args, cwd) => {
+    if (args[0] === 'view') return args[1] === 'a@>=2.0.5' ? '["2.1.0","2.2.0"]\n' : 'null';
+    if (args[0] === 'audit') await writeFile(join(cwd, 'package-lock.json'), lockWith('2.1.0'));
+  };
+  const raised = { ...raise, finding: { ...raise.finding } };
+  const next = await refreshLockfiles({ ...group, changes: [{ ...audit }, raised] }, edited(), read, { run: view });
+  assert.equal(next.files.get('app/package.json'), '{"dependencies":{"a":"2.1.0"}}');
+  assert.equal(raised.finding.fix.to, '2.1.0');
   // without a lockfile, a CAP upgrade still changes package.json
   const cap = await refreshLockfiles({ lockfile: 'install', changes: [{ file: 'x/package.json', finding: { fix: { kind: 'cap-upgrade' } } }] },
     new Map([['x/package.json', '{}']]), async () => null, { run: failing });
