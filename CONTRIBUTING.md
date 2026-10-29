@@ -46,6 +46,9 @@ of `main` and the pull requests queued ahead of it, and merges it when the
 checks pass there too. You don't have to update your branch with `main`
 first.
 
+Dependabot's minor and patch updates are approved and queued automatically
+once their checks pass; major updates wait for a maintainer.
+
 ## Commit messages
 
 Use [Conventional Commits](https://www.conventionalcommits.org/), for example
