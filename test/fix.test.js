@@ -9,6 +9,7 @@ import { applyFix } from '../src/fix/edits.js';
 import { githubProvider } from '../src/fix/github.js';
 import { azureProvider } from '../src/fix/azure.js';
 import { applyFixes, detectProvider, openPullRequests } from '../src/fix/index.js';
+import { refreshLockfiles } from '../src/fix/npm.js';
 import { applyGroup, marker, onlyPatches, planFixes, pullRequestBody, readMarker } from '../src/fix/plan.js';
 import { teamsPayload } from '../src/notifiers/webhook.js';
 import { resolveSettings } from '../src/settings.js';
@@ -134,8 +135,8 @@ function fakeProvider(files, prs = []) {
       calls.push(['write', branch]);
       return before === content ? 'unchanged' : before ? 'updated' : 'created';
     },
-    async createPullRequest({ branch, title, body }) {
-      const pr = { id: prs.length + 1, branch, state: 'open', title, body, url: `https://pr/${prs.length + 1}` };
+    async createPullRequest({ branch, title, body, draft }) {
+      const pr = { id: prs.length + 1, branch, state: 'open', title, body, draft, url: `https://pr/${prs.length + 1}` };
       prs.push(pr);
       calls.push(['create', title]);
       return pr;
@@ -303,7 +304,7 @@ test('the Teams card links the fix pull requests', () => {
 test('fix.groups accepts only known kinds of fix', async () => {
   assert.deepEqual(resolveSettings({ env: { SENTINEL_FIX_GROUPS: 'ui5' } }).values.fix.groups, ['ui5']);
   assert.deepEqual(resolveSettings({}).values.fix.groups, ['ui5', 'node', 'npm-overrides']);
-  assert.throws(() => resolveSettings({ env: { SENTINEL_FIX_GROUPS: 'ui5,cap' } }), /expected a list of ui5, node, npm-overrides/);
+  assert.throws(() => resolveSettings({ env: { SENTINEL_FIX_GROUPS: 'ui5,cdk' } }), /expected a list of ui5, node, npm-overrides, cap/);
 });
 
 test('Node.js: changes "engines.node" and version files, keeping the rest of the file', () => {
@@ -440,4 +441,72 @@ test('GitHub: auto-merge through GraphQL, with a merge method the repository all
   await assert.rejects(gh.enableAutoMerge({ nodeId: 'PR_1' }), /clean status: auto-merge needs a branch protection rule with required checks/);
   const ghes = fakeFetch([['GET', /\/repos\/o\/r$/, { allow_auto_merge: false }]]);
   await assert.rejects(githubProvider({ apiUrl: 'https://ghe.example/api/v3', repository: 'o/r', token: 't', fetchImpl: ghes.impl }).enableAutoMerge({ nodeId: 'x' }), /Allow auto-merge/);
+});
+
+// ---------- CAP ----------
+
+const capReport = () => scan({ root: fixture('cap-app'), now, config: { checks: ['cap-version'], cap: { registry: fixture('npm') } }, fetchJsonImpl: offline });
+
+test('CAP: changes the range in dependencies or devDependencies, and nothing else', () => {
+  const pkg = '{\n  "dependencies": { "@sap/cds": "^8" },\n  "devDependencies": { "@sap/cds-dk": "^8" }\n}\n';
+  const fix = (name) => finding({ kind: 'cap-upgrade', name, from: '^8', to: '^9' });
+  assert.equal(applyFix(pkg, fix('@sap/cds')).text, pkg.replace('"@sap/cds": "^8"', '"@sap/cds": "^9"'));
+  assert.equal(applyFix(pkg, fix('@sap/cds-dk')).text, pkg.replace('"@sap/cds-dk": "^8"', '"@sap/cds-dk": "^9"'));
+  assert.match(applyFix('{ "dependencies": { "@sap/cds": "~8.1" } }', fix('@sap/cds')).skipped, /not found once/);
+  // the same name in "overrides" makes it ambiguous, so it is left alone
+  assert.ok(applyFix('{ "dependencies": { "@sap/cds": "^8" }, "overrides": { "@sap/cds": "^8" } }', fix('@sap/cds')).skipped);
+});
+
+test('CAP: only when asked for, one draft group per repository, each package to its current major', async () => {
+  const report = await capReport();
+  assert.equal(planFixes(report.findings).length, 0);
+  const [group] = planFixes(report.findings, { only: ['cap'] });
+  assert.equal(group.draft, true);
+  assert.equal(group.title, 'Upgrade CAP packages');
+  assert.deepEqual(group.changes.map((c) => [c.file, c.finding.fix.name, c.finding.fix.to]), [
+    ['package.json', '@sap/cds-dk', '^10'], ['package.json', '@sap/cds-mtxs', '^4'], ['package.json', '@sap/cds', '^10'],
+    ['services/legacy/package.json', '@sap/cds', '^10'],
+  ]);
+  const one = planFixes(report.findings.filter((f) => f.fix?.name === '@sap/cds'), { only: ['cap'] })[0];
+  assert.equal(one.title, 'Upgrade @sap/cds to 10');
+});
+
+test('CAP: the pull request is a draft, says to read the release notes, and leaves a workspace lockfile to npm', async () => {
+  const report = await capReport();
+  const files = {};
+  for (const f of ['package.json', 'package-lock.json', 'services/legacy/package.json']) files[`test/fixtures/cap-app/${f}`] = await readFile(fixture(`cap-app/${f}`), 'utf8');
+  const provider = fakeProvider(files);
+  const ran = [];
+  const [result] = await openPullRequests(report, fixture('cap-app'), { ...opts(provider), only: ['cap'], runNpm: async (args) => ran.push(args) });
+  assert.equal(result.action, 'created');
+  assert.equal(provider.prs[0].draft, true);
+  assert.match(provider.prs[0].body, /release notes\]\(https:\/\/cap\.cloud\.sap\/docs\/releases\/\)/);
+  assert.match(provider.prs[0].body, /`\^7` → `\^10`/);
+  assert.match(provider.prs[0].body, /Not changed: `test\/fixtures\/cap-app\/package-lock\.json`, because it covers npm workspaces/);
+  assert.deepEqual(ran, []);
+});
+
+test('lockfiles: npm runs in a folder with package.json, package-lock.json and .npmrc, and its lockfile is kept', async () => {
+  const disk = { 'app/package-lock.json': '{"lockfileVersion":3}\n', 'app/.npmrc': 'registry=https://npm.example/\n' };
+  const group = { lockfile: 'audit', changes: [{ file: 'app/package.json' }] };
+  const seen = [];
+  const run = async (args, cwd) => {
+    seen.push([args[0], (await readFile(join(cwd, '.npmrc'), 'utf8')).trim(), JSON.parse(await readFile(join(cwd, 'package.json'), 'utf8')).dependencies]);
+    if (args[0] === 'audit') {
+      await import('node:fs/promises').then((fs) => fs.writeFile(join(cwd, 'package-lock.json'), '{"lockfileVersion":3,"fixed":true}\n'));
+      throw new Error('exit 1'); // npm audit fix fails while something is left unfixed
+    }
+  };
+  const { files, skipped } = await refreshLockfiles(group, new Map([['app/package.json', '{"dependencies":{"a":"^2"}}']]), async (f) => disk[f] ?? null, { run });
+  assert.deepEqual(skipped, []);
+  assert.deepEqual(seen, [['install', 'registry=https://npm.example/', { a: '^2' }], ['audit', 'registry=https://npm.example/', { a: '^2' }]]);
+  assert.equal(files.get('app/package-lock.json'), '{"lockfileVersion":3,"fixed":true}\n');
+
+  // a failing install leaves the lockfile as it was, and says why
+  const failing = async () => { throw Object.assign(new Error('x'), { stderr: 'npm error code ETARGET\nnpm error notarget No matching version found for a@^2.\n' }); };
+  const second = await refreshLockfiles({ ...group, lockfile: 'install' }, new Map([['app/package.json', '{}']]), async (f) => disk[f] ?? null, { run: failing });
+  assert.equal(second.files.has('app/package-lock.json'), false);
+  assert.match(second.skipped[0].reason, /npm could not update it: code ETARGET/);
+  // no lockfile: nothing to do
+  assert.deepEqual((await refreshLockfiles(group, new Map(), async () => null, { run: failing })).skipped, []);
 });

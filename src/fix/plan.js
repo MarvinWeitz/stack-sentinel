@@ -4,12 +4,15 @@ import { applyFix } from './edits.js';
 /**
  * Fixes are grouped by what they change, one pull request per group. A group's id is part of
  * its branch name, which never changes, so every run finds the pull request an earlier run
- * opened for it. `check` is the check whose findings fill the group.
+ * opened for it. `checks` are the checks whose findings fill the group; `lockfile` says how the
+ * package-lock.json next to a changed package.json is brought up to date (see npm.js).
  */
 export const GROUPS = [
   { id: 'ui5', checks: ['ui5-version'], kinds: /^ui5-/ },
   { id: 'node', checks: ['node-version', 'cf-node-version'], kinds: /^node-/ },
   { id: 'npm-overrides', checks: ['npm-audit'], kinds: /^npm-override-/ },
+  // a new major version can need code changes, so these open as drafts, and only when asked for
+  { id: 'cap', checks: ['cap-version'], kinds: /^cap-/, draft: true, lockfile: 'install', optIn: true },
 ];
 
 /** "1.136.11" -> [1, 136, 11]; "1.136.x" -> [1, 136, Infinity]. */
@@ -27,13 +30,13 @@ const newer = (a, b) => {
  * the newest Node.js release). Findings below `fixOn`, and groups not in `only` (ids), are left out.
  * Returns [{ id, check, title, signature, changes: [{ file, finding }] }].
  */
-export function planFixes(findings, { fixOn = 'info', only = GROUPS.map((g) => g.id) } = {}) {
+export function planFixes(findings, { fixOn = 'info', only = GROUPS.filter((g) => !g.optIn).map((g) => g.id) } = {}) {
   const groups = [];
   for (const def of GROUPS.filter((g) => only.includes(g.id))) {
     const byPlace = new Map();
     for (const f of findings) {
       if (!f.fix || !f.file || !def.kinds.test(f.fix.kind) || !atLeast(f.severity, fixOn)) continue;
-      const place = JSON.stringify([f.file, f.fix.kind, f.version ?? null, f.fix.path ?? null, f.fix.host ?? f.fix.suffix ?? null]);
+      const place = JSON.stringify([f.file, f.fix.kind, f.version ?? null, f.fix.path ?? null, f.fix.host ?? f.fix.suffix ?? f.fix.name ?? null]);
       const seen = byPlace.get(place);
       const wins = !seen || (Boolean(f.fix.binding) !== Boolean(seen.fix.binding) ? Boolean(f.fix.binding)
         : f.fix.to && seen.fix.to && newer(f.fix.to.replace(/^\D+/, ''), seen.fix.to.replace(/^\D+/, '')));
@@ -42,7 +45,7 @@ export function planFixes(findings, { fixOn = 'info', only = GROUPS.map((g) => g
     if (byPlace.size === 0) continue;
     const changes = [...byPlace.values()].map((finding) => ({ file: finding.file, finding }))
       .sort((a, b) => a.file.localeCompare(b.file));
-    groups.push({ id: def.id, checks: def.checks, ...describe(def.id, changes), changes });
+    groups.push({ id: def.id, checks: def.checks, draft: def.draft, lockfile: def.lockfile, ...describe(def.id, changes), changes });
   }
   return groups;
 }
@@ -61,6 +64,13 @@ function describe(id, changes) {
     const targets = [...new Set(changes.map((c) => c.finding.fix.to))].sort();
     const majors = [...new Set(targets.map((t) => /\d+/.exec(t)[0]))];
     return { title: majors.length === 1 ? `Move Node.js to ${majors[0]}` : 'Update Node.js versions', signature: `node ${targets.join(' ')}` };
+  }
+  if (id === 'cap') {
+    const moves = [...new Set(changes.map((c) => `${c.finding.fix.name}@${c.finding.fix.to}`))].sort();
+    const names = [...new Set(changes.map((c) => c.finding.fix.name))];
+    const majors = [...new Set(changes.map((c) => /\d+/.exec(c.finding.fix.to)[0]))];
+    const title = majors.length > 1 ? 'Upgrade CAP packages' : `Upgrade ${names.length === 1 ? names[0] : 'CAP'} to ${majors[0]}`;
+    return { title, signature: `cap ${moves.join(' ')}` };
   }
   const keys = changes.map((c) => `${c.file}:${c.finding.fix.path.join('>')}`).sort();
   const n = changes.length;
@@ -105,12 +115,17 @@ export const readMarker = (body) => new RegExp(`<!-- ${MARKER}: (.*?) -->`).exec
 /** Pull request description: what changes where, and why. */
 export function pullRequestBody(group, applied, report, notes = []) {
   const rows = applied.map(({ file, finding }) => {
-    const from = finding.version ? `\`${finding.version}\`` : 'not set';
+    const version = finding.fix.from ?? finding.version;
+    const from = version ? `\`${version}\`` : 'not set';
     const what = finding.fix.to ? `${from} → \`${finding.fix.to}\`` : 'removed';
     return `| \`${file}\` | ${what} | ${finding.message.replace(/\|/g, '\\|')} |`;
   });
   const why = [...new Set(applied.map((c) => c.finding.recommendation).filter(Boolean))];
-  const after = group.id === 'npm-overrides' ? ['', 'Run `npm install` afterwards to check that the lockfile still agrees.'] : [];
+  const after = {
+    'npm-overrides': ['', 'Run `npm install` afterwards to check that the lockfile still agrees.'],
+    cap: ['', 'A new major version can need changes to the code: read the [release notes](https://cap.cloud.sap/docs/releases/) '
+      + 'and run the tests before merging. This is why it opens as a draft.'],
+  }[group.id] ?? [];
   return [
     `stack-sentinel found ${applied.length === 1 ? 'a version' : 'versions'} to change in ${report.project}.`,
     '',

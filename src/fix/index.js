@@ -3,15 +3,23 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { azureProvider } from './azure.js';
 import { githubProvider } from './github.js';
+import { refreshLockfiles } from './npm.js';
 import { GROUPS, applyGroup, onlyPatches, planFixes, pullRequestBody, readMarker } from './plan.js';
 
 /** Changes the files in the scanned folder itself. Returns [{ group, files, skipped }]. */
-export async function applyFixes(report, root, { fixOn, only }) {
+export async function applyFixes(report, root, { fixOn, only, runNpm }) {
   const results = [];
+  const read = (file) => readFile(join(root, file), 'utf8').catch(() => null);
   for (const group of planFixes(report.findings, { fixOn, only })) {
-    const { files, skipped } = await applyGroup(group, (file) => readFile(join(root, file), 'utf8').catch(() => null));
+    let { files, applied, skipped } = await applyGroup(group, read);
+    const notes = skipped.map((s) => `${s.change.file}: ${s.reason}`);
+    if (group.lockfile && applied.length) {
+      const refreshed = await refreshLockfiles({ ...group, changes: applied }, files, read, { run: runNpm });
+      files = refreshed.files;
+      notes.push(...refreshed.skipped.map((s) => `${s.file}: ${s.reason}`));
+    }
     for (const [file, text] of files) await writeFile(join(root, file), text);
-    results.push({ group: group.id, title: group.title, files: [...files.keys()], skipped: skipped.map((s) => `${s.change.file}: ${s.reason}`) });
+    results.push({ group: group.id, title: group.title, files: [...files.keys()], skipped: notes });
   }
   return results;
 }
@@ -53,14 +61,22 @@ const WORKFLOWS = 'GitHub lets only a token with the "Workflows" permission chan
   + 'To have them changed too, set SENTINEL_FIX_TOKEN to a token with "Contents", "Pull requests" and "Workflows" write access.';
 
 /** Commits one group's changes to its branch and opens or updates its pull request. */
-async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge = 'off' }) {
+async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge = 'off', runNpm }) {
   // the edits are made to the default branch as it is now, not to the files the scan saw
-  let { files, applied, skipped } = await applyGroup({ ...group, changes: group.changes.map((c) => ({ ...c, file: inRepo(c.file) })) },
-    (file) => provider.readFile(baseBranch, file));
+  const read = (file) => provider.readFile(baseBranch, file);
+  let { files, applied, skipped } = await applyGroup({ ...group, changes: group.changes.map((c) => ({ ...c, file: inRepo(c.file) })) }, read);
   for (const s of skipped) log(`not changed: ${s.change.file}: ${s.reason}`);
   if (files.size === 0) return { action: 'skipped', more: { reason: 'none of the changes apply to the default branch' } };
   let written;
   const notes = [];
+  if (group.lockfile) {
+    const refreshed = await refreshLockfiles({ ...group, changes: applied }, files, read, { run: runNpm });
+    files = refreshed.files;
+    for (const s of refreshed.skipped) {
+      log(`not changed: ${s.file}: ${s.reason}`);
+      notes.push(`Not changed: \`${s.file}\`, because ${s.reason}.`);
+    }
+  }
   try {
     written = await provider.writeBranch(branch, baseBranch, files, group.title, { open: Boolean(open) });
   } catch (err) {
@@ -107,7 +123,7 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
  * requests on those branches are the memory. Returns what happened to each group:
  * [{ group, title, action: 'created' | 'updated' | 'unchanged' | 'closed' | 'skipped', url?, reason? }].
  */
-export async function openPullRequests(report, root, { provider, fixOn, only, branchPrefix, maxPullRequests, autoMerge = 'off', log = () => {} }) {
+export async function openPullRequests(report, root, { provider, fixOn, only, branchPrefix, maxPullRequests, autoMerge = 'off', log = () => {}, runNpm }) {
   const prefix = relative(repositoryRoot(root), root).split(sep).filter(Boolean).join('/');
   const inRepo = (file) => (prefix ? `${prefix}/${file}` : file);
   const groups = planFixes(report.findings, { fixOn, only });
@@ -144,7 +160,7 @@ export async function openPullRequests(report, root, { provider, fixOn, only, br
     }
     // one group that fails does not stop the others; the run still ends as a tool failure
     try {
-      const done = await writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge });
+      const done = await writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge, runNpm });
       if (done.created) openCount++;
       result(done.action, done.more);
     } catch (err) {

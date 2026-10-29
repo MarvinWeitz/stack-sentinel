@@ -19,6 +19,7 @@ export function applyFix(text, finding) {
     case 'ui5-workzone': return workzone(text, version, fix.to);
     case 'ui5-workzone-missing': return workzoneMissing(text, fix.to);
     case 'npm-override-remove': return removeOverride(text, fix.path);
+    case 'cap-upgrade': return dependency(text, fix.name, fix.from, fix.to);
     case 'node-engines': return engines(text, version, fix.to);
     case 'node-engines-missing': return enginesMissing(text, fix.to);
     case 'node-version-file': return versionFile(text, version, fix.to);
@@ -122,6 +123,15 @@ function engines(text, from, to) {
   if ((text.match(re) ?? []).length !== 1) return { skipped: `"engines.node" "${from}" not found once` };
   const out = text.replace(re, `$1${to}$2`);
   return parse(out)?.engines?.node === to ? { text: out } : { skipped: 'package.json did not read back as expected' };
+}
+
+/** Changes the range a package.json asks for in "dependencies" or "devDependencies". */
+function dependency(text, name, from, to) {
+  const re = new RegExp(`("${escapeRe(name)}"\\s*:\\s*")${escapeRe(from)}(")`, 'g');
+  if ((text.match(re) ?? []).length !== 1) return { skipped: `"${name}": "${from}" not found once` };
+  const out = text.replace(re, `$1${to}$2`);
+  const json = parse(out);
+  return (json?.dependencies?.[name] ?? json?.devDependencies?.[name]) === to ? { text: out } : { skipped: 'package.json did not read back as expected' };
 }
 
 /** Changes the version in a .nvmrc or .node-version, keeping comments. */
