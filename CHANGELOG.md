@@ -10,6 +10,13 @@ release notes.
 
 ## Unreleased
 
+- Two opt-in kinds of fix pull request that run npm to update
+  `package-lock.json` (`--package-lock-only --ignore-scripts`, in a temporary
+  folder): `cap` moves CAP packages on an old major to the current one, as a
+  draft, and `npm-audit` moves vulnerable packages that `npm audit fix` can
+  move, raising a range in `package.json` that pins them below the fix. Turn
+  them on with `SENTINEL_FIX_GROUPS`.
+
 - `SENTINEL_FIX_AUTO_MERGE=patch` (or `all`) turns on auto-merge for fix
   pull requests that only move to newer patches, so they merge once their
   required checks pass.

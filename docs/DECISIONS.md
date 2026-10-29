@@ -543,12 +543,28 @@ finding comes with the change that fixes it. It is off by default
 value in one file: UI5 versions in `ui5.yaml`, bootstrap URLs and the Work
 Zone pin, Node.js versions in `"engines.node"` and version files, and npm
 overrides that no longer do anything. `minUI5Version` is a statement of
-support and is never raised. CAP majors need a migration. A missing
+support and is never raised. A missing
 `"engines.node"` is only added for Cloud Foundry apps, which run on the
 buildpack default anyway; elsewhere the version would be a guess. A
-range is only rewritten when it is a plain lower bound (`>=18`). Vulnerable
-packages need a lockfile update, which means running npm; the tool starts no
-child processes.
+range is only rewritten when it is a plain lower bound (`>=18`).
+
+**Two opt-in groups run npm, the one child process the tool starts.** CAP
+majors and vulnerable packages need a lockfile update, and only npm writes a
+lockfile correctly; a hand-written one would be a guess. When asked for
+(`fix.groups` names `cap` or `npm-audit`, neither is on by default), npm runs
+with `--package-lock-only --ignore-scripts` in a temporary folder holding
+only `package.json`, `package-lock.json` and `.npmrc`: nothing is installed,
+no package scripts run, and the checkout is not touched. The scan itself
+still starts no process. A lockfile covering npm workspaces is left alone,
+since npm needs every workspace's `package.json` for it. `cap` opens as a
+draft, because a new major can need code changes, and is never set to
+auto-merge. `npm-audit` only takes findings where `npm audit fix` can do the
+work after raising a range in the project's own `package.json`, keeping its
+style (exact stays exact, `~` stays `~`); afterwards it checks that each
+package moved, and drops what npm left, with its raised range, so a
+`package.json` never asks for what the lockfile does not hold. `npm audit
+fix` may move other packages within their ranges too; the pull request says
+so.
 
 **For Node.js, what Cloud Foundry ships wins.** `node-version` recommends the
 newest long-term support release, `cf-node-version` the line the buildpack
@@ -609,7 +625,10 @@ line is opened like a patch; the project's own checks decide.
 ## Unverified and open
 
 - **Fix pull requests were tried on one GitHub test repository only**
-  (2026-10-29: opened, and left unchanged on the next run). The Azure DevOps
+  (2026-10-29: opened, and left unchanged on the next run; every group, the
+  workflow-file fallback and a refused auto-merge seen there). A successful
+  auto-merge, and a run with a `SENTINEL_FIX_TOKEN` that may change workflow
+  files, were not. The Azure DevOps
   calls are tested against recorded shapes only, and it is assumed that the
   build service may delete the branches it created, which is how a branch
   left from a closed pull request starts over.

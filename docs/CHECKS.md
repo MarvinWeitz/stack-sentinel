@@ -172,6 +172,9 @@ The action depends on what the version ranges along the way allow:
 | It is bundled inside another package | Only a new release of that package fixes it |
 | No fixed version is known | Consider replacing it, or the direct dependency that brings it in |
 
+The first two rows carry a `fix`: with `fix.groups` naming `npm-audit`, the
+fix pull request raises the range and lets npm move the package (README, [Fix pull requests](../README.md#fix-pull-requests)).
+
 An `overrides` entry in `package.json` forces a version, and stays in force
 after the reason for it is gone. The check reads the `overrides` of the
 `package.json` next to each lockfile and reports an override as info when it

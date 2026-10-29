@@ -107,7 +107,7 @@ its value and where it came from.
 | `scan.maxDepth` | `--max-depth` | `SENTINEL_SCAN_MAX_DEPTH` | `8` | How many folder levels deep to scan |
 | `notify.maxFindings` |  | `SENTINEL_NOTIFY_MAX_FINDINGS` | `25` | Most findings listed in one Teams card |
 | `fix.mode` | `--fix` | `SENTINEL_FIX_MODE` | `off` | Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (see [Fix pull requests](#fix-pull-requests)): `off`, `apply`, `pr` |
-| `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,node,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), node (Node.js versions), npm-overrides (npm overrides no longer needed) |
+| `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,node,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), node (Node.js versions), npm-overrides (npm overrides no longer needed); and, off by default, cap (CAP major upgrades, as draft pull requests) and npm-audit (vulnerable npm packages; runs npm) |
 | `fix.on` | `--fix-on` | `SENTINEL_FIX_ON` | `info` | Fix findings at or above this severity: `ok`, `info`, `warn`, `error` |
 | `fix.token` |  | `SENTINEL_FIX_TOKEN` |  | Token that opens the pull requests (default: `GITHUB_TOKEN` or `SYSTEM_ACCESSTOKEN`; not read from the config file) |
 | `fix.autoMerge` |  | `SENTINEL_FIX_AUTO_MERGE` | `off` | Let fix pull requests merge by themselves once their checks pass: patch for those that only move to a newer patch of the same version, all for every one: `off`, `patch`, `all` |
@@ -267,8 +267,8 @@ threshold.
 ## 🔧 Fix pull requests
 
 With `SENTINEL_FIX_MODE=pr` the scheduled run also opens pull requests that
-fix what can be fixed safely, much like Dependabot. Only edits that change one
-version in one file are made:
+fix what can be fixed safely, much like Dependabot. By default only edits that
+change one version in one file are made:
 
 | Check | What is changed |
 | --- | --- |
@@ -276,13 +276,27 @@ version in one file are made:
 | `node-version`, `cf-node-version` | The Node.js version in CI pipelines (`setup-node`, `NodeTool`, `UseNode`) and in `FROM node:<tag>` is moved to the recommended major. `.nvmrc` and `.node-version` are set to the recommended Node.js major, `"engines.node"` to `^<major>`, a plain lower bound such as `>=18` is raised, an exact version on Cloud Foundry (`22.11.0`) becomes a range the buildpack can stage (`22.x`), and a Cloud Foundry app that declares none gets `"engines.node"` for the line the buildpack keeps longest. Where the two checks disagree, the version the Cloud Foundry buildpack ships wins |
 | `npm-audit` | Overrides in `package.json` that are unused or no longer needed are removed |
 
+Two more kinds run npm to bring `package-lock.json` up to date, and are only
+made when `fix.groups` names them:
+
+| Group | What is changed |
+| --- | --- |
+| `cap` | A CAP package (`cap-version`) on an old major moves to `^<current major>` in `package.json`, and the lockfile next to it is updated with `npm install --package-lock-only --ignore-scripts`. It opens as a **draft**, as a new major can need code changes (see the [CAP release notes](https://cap.cloud.sap/docs/releases/)) |
+| `npm-audit` | Vulnerable packages that `npm audit fix` can move on its own, after raising a range the project's own `package.json` pins below the fix (`"lodash": "4.17.20"` becomes `"4.17.21"`), are moved with `npm install` and `npm audit fix`, both with `--package-lock-only --ignore-scripts`. A package that a dependency's own range or a bundled copy holds back is left to a person, and so is a package npm did not move |
+
+npm runs in a temporary folder with only `package.json`, `package-lock.json`
+and `.npmrc`, so no packages are installed and no package scripts run. It
+needs `npm` on the path and access to the registry, as an `npm install` has.
+A lockfile that covers npm workspaces is not changed: the pull request says
+so, and a `cap` pull request then changes `package.json` alone.
+
 Nothing else is changed automatically: not `minUI5Version`, which states
-which versions an app supports, not CAP major versions, which need a
-migration, not a missing `"engines.node"` outside Cloud Foundry, which would be a guess, and not
-vulnerable packages, which need a lockfile update.
+which versions an app supports, and not a missing `"engines.node"` outside
+Cloud Foundry, which would be a guess.
 
 - **One pull request per kind of fix**, on a branch whose name never changes
-  (`stack-sentinel/ui5`, `stack-sentinel/node`, `stack-sentinel/npm-overrides`). Each run updates it
+  (`stack-sentinel/ui5`, `stack-sentinel/node`, `stack-sentinel/npm-overrides`, `stack-sentinel/cap`,
+  `stack-sentinel/npm-audit`). Each run updates it
   while the findings remain, for example to a newer patch, and closes it when
   they are gone.
 - **Closing a pull request without merging** skips those versions: the next
@@ -291,8 +305,9 @@ vulnerable packages, which need a lockfile update.
   run. A change whose file no longer holds the version the scan saw is left
   out.
 - **Choose what is fixed** with `fix.groups`: `SENTINEL_FIX_GROUPS=ui5`
-  fixes UI5 versions only, and leaves npm overrides to be reported. A pull
-  request of a kind that is turned off is left open as it is.
+  fixes UI5 versions only, and leaves npm overrides to be reported;
+  `SENTINEL_FIX_GROUPS=ui5,node,npm-overrides,cap,npm-audit` turns on all of
+  them. A pull request of a kind that is turned off is left open as it is.
 - **Workflow files on GitHub** (`.github/workflows/*.yml`) can only be
   changed by a token with the "Workflows" permission, which `GITHUB_TOKEN`
   cannot have. Without one, they are left out of the pull request, which
@@ -305,7 +320,8 @@ vulnerable packages, which need a lockfile update.
   checks do not start for pull requests opened with `GITHUB_TOKEN`, a
   `SENTINEL_FIX_TOKEN`. On Azure DevOps it sets the pull request to complete
   by itself once its branch policies pass. If it cannot be turned on, the
-  pull request stays open and the output says why.
+  pull request stays open and the output says why. Draft pull requests
+  (`cap`) are never set to merge.
 - **At most `fix.maxPullRequests`** (default 5) are open at a time.
 - **Moving to a new release line** (UI5 1.120 to 1.148, Node.js 20 to 24) is a normal pull
   request too. The project's own checks on the pull request are what show
