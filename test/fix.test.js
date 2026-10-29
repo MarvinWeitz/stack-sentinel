@@ -336,3 +336,23 @@ test('Node.js: one pull request for both checks; what Cloud Foundry ships wins',
   assert.equal(JSON.parse(files.get('tools/api/package.json')).engines.node, '22.x');
   assert.deepEqual(planFixes(report.findings, { only: ['ui5'] }), []);
 });
+
+test('Node.js in CI files and Dockerfiles: found in the steps that set it up, and changed there', async () => {
+  const report = await scan({
+    root: fixture('node-ci'), now, config: { checks: ['node-version'], node: { feed: fixture('node-schedule.json') } },
+    fetchJsonImpl: offline,
+  });
+  assert.deepEqual(report.findings.map((f) => [f.file, f.source, f.version, f.severity]), [
+    ['.github/workflows/ci.yml', 'ci', '20', 'error'],
+    ['Dockerfile', 'container', '20', 'error'],
+    ['azure-pipelines.yml', 'ci', '20.x', 'error'],
+    ['azure-pipelines.yml', 'ci', '18', 'error'],
+    ['Dockerfile', 'container', 'lts', 'ok'],
+  ]); // the matrix expression, Python's versionSpec and a digest pin are not read
+  const [group] = planFixes(report.findings);
+  const { files } = await applyGroup(group, (file) => readFile(fixture(`node-ci/${file}`), 'utf8'));
+  assert.match(files.get('.github/workflows/ci.yml'), /node-version: 24 # what production runs\n/);
+  assert.match(files.get('.github/workflows/ci.yml'), /python-version: "3\.12"/);
+  assert.match(files.get('azure-pipelines.yml'), /versionSpec: "3\.12"[\s\S]*versionSpec: "24\.x"[\s\S]*version: "24"/);
+  assert.equal(files.get('Dockerfile'), 'FROM --platform=linux/amd64 node:24-alpine AS build\nWORKDIR /app\nFROM docker.io/library/node:24-alpine\nFROM node:lts-slim\nFROM node@sha256:0000\n');
+});

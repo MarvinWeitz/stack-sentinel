@@ -33,7 +33,7 @@ export function planFixes(findings, { fixOn = 'info', only = GROUPS.map((g) => g
     const byPlace = new Map();
     for (const f of findings) {
       if (!f.fix || !f.file || !def.kinds.test(f.fix.kind) || !atLeast(f.severity, fixOn)) continue;
-      const place = JSON.stringify([f.file, f.fix.kind, f.version ?? null, f.fix.path ?? null, f.fix.host ?? null]);
+      const place = JSON.stringify([f.file, f.fix.kind, f.version ?? null, f.fix.path ?? null, f.fix.host ?? f.fix.suffix ?? null]);
       const seen = byPlace.get(place);
       const wins = !seen || (Boolean(f.fix.binding) !== Boolean(seen.fix.binding) ? Boolean(f.fix.binding)
         : f.fix.to && seen.fix.to && newer(f.fix.to.replace(/^\D+/, ''), seen.fix.to.replace(/^\D+/, '')));

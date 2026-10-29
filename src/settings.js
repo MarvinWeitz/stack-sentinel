@@ -62,6 +62,10 @@ export const SETTINGS = [
   { key: 'node.requireLts', type: 'bool', default: true, desc: 'Warn when only non-LTS Node.js releases are allowed' },
   { key: 'node.warnDays', type: 'int', default: 180, desc: 'Warn this many days before end of life' },
   { key: 'node.packagePattern', type: 'regex', default: '(^|/)package\\.json$', desc: 'Files read for "engines.node" (regex on the relative path)' },
+  { key: 'node.ciPattern', type: 'regex', default: '(^|/)(\\.github/workflows/[^/]+|azure-pipelines[^/]*|\\.azure-pipelines/[^/]+)\\.ya?ml$',
+    desc: 'CI pipeline files read for the Node.js version they set up (regex on the relative path)' },
+  { key: 'node.containerPattern', type: 'regex', default: '(^|/)(Dockerfile|Containerfile)([.-][\\w.-]+)?$',
+    desc: 'Dockerfiles read for the node image they build on (regex on the relative path)' },
   { key: 'node.versionFilePattern', type: 'regex', default: '(^|/)\\.(nvmrc|node-version)$', desc: 'Files read as Node.js version files (regex on the relative path)' },
 
   { key: 'cf.feed', type: 'string', default: 'https://raw.githubusercontent.com/cloudfoundry/nodejs-buildpack/master/manifest.yml',

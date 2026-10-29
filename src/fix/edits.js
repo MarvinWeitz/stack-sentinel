@@ -1,3 +1,4 @@
+import { versionsFromCi, versionsFromDockerfile } from '../checks/node.js';
 import { frameworkVersionLine, previewVersionLine } from '../checks/ui5.js';
 
 const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -19,6 +20,8 @@ export function applyFix(text, finding) {
     case 'npm-override-remove': return removeOverride(text, fix.path);
     case 'node-engines': return engines(text, version, fix.to);
     case 'node-version-file': return versionFile(text, version, fix.to);
+    case 'node-ci': return onLines(text, versionsFromCi(text).find((v) => v.value === version), version, fix.to);
+    case 'node-container': return onLines(text, versionsFromDockerfile(text).find((v) => v.value === version && v.suffix === (fix.suffix ?? '')), version, fix.to, /(node:)/);
     default: return { skipped: `unknown fix "${fix.kind}"` };
   }
 }
@@ -119,5 +122,17 @@ function versionFile(text, from, to) {
   const i = lines.findIndex((l) => l.replace(/#.*$/, '').trim() !== '');
   if (i === -1 || lines[i].replace(/#.*$/, '').trim() !== from) return { skipped: `version ${from} not found` };
   lines[i] = lines[i].replace(from, to);
+  return { text: lines.join('\n') };
+}
+
+/**
+ * Replaces `from` with `to` on the lines a reader found it on (`found.lines`), in the value
+ * after the key, or after `anchor` (the image name in a FROM line).
+ */
+function onLines(text, found, from, to, anchor = /(:\s*["']?)/) {
+  if (!found) return { skipped: `version ${from} not found` };
+  const lines = text.split('\n');
+  const re = new RegExp(`${anchor.source}${escapeRe(from)}(?![\\w.])`);
+  for (const i of found.lines) lines[i] = lines[i].replace(re, `$1${to}`);
   return { text: lines.join('\n') };
 }

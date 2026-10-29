@@ -10,6 +10,9 @@ release notes.
 
 ## Unreleased
 
+- `node-version` also reads the Node.js version that CI pipelines set up
+  (GitHub's `actions/setup-node`, Azure Pipelines' `NodeTool` and `UseNode`)
+  and the `node` image Dockerfiles build on, and fix pull requests move them.
 - Fix pull requests, much like Dependabot: with `SENTINEL_FIX_MODE=pr` the
   scheduled run on GitHub Actions or Azure DevOps opens one pull request per
   kind of fix, and keeps it up to date. It changes UI5 versions in

@@ -62,6 +62,8 @@ release schedule
 | --- | --- |
 | `package.json` → `engines.node` | The range of Node.js versions the project accepts; on Cloud Foundry the buildpack picks the runtime from it |
 | `.nvmrc`, `.node-version` | The version used for local development and CI |
+| CI pipelines (`.github/workflows/*.yml`, `azure-pipelines*.yml`) → `actions/setup-node` `node-version`, `NodeTool` `versionSpec`, `UseNode` `version` | The version the pipeline builds and tests with; expressions and build matrices are not read |
+| `Dockerfile`, `Containerfile` → `FROM node:<tag>` | The version of the official node image the container is built on |
 
 | Severity | When |
 | --- | --- |

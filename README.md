@@ -126,6 +126,8 @@ its value and where it came from.
 | `node.requireLts` |  | `SENTINEL_NODE_REQUIRE_LTS` | `true` | Warn when only non-LTS Node.js releases are allowed |
 | `node.warnDays` |  | `SENTINEL_NODE_WARN_DAYS` | `180` | Warn this many days before end of life |
 | `node.packagePattern` |  | `SENTINEL_NODE_PACKAGE_PATTERN` | `(^\|/)package\.json$` | Files read for "engines.node" (regex on the relative path) |
+| `node.ciPattern` |  | `SENTINEL_NODE_CI_PATTERN` | `(^\|/)(\.github/workflows/[^/]+\|azure-pipelines[^/]*\|\.azure-pipelines/[^/]+)\.ya?ml$` | CI pipeline files read for the Node.js version they set up (regex on the relative path) |
+| `node.containerPattern` |  | `SENTINEL_NODE_CONTAINER_PATTERN` | `(^\|/)(Dockerfile\|Containerfile)([.-][\w.-]+)?$` | Dockerfiles read for the node image they build on (regex on the relative path) |
 | `node.versionFilePattern` |  | `SENTINEL_NODE_VERSION_FILE_PATTERN` | `(^\|/)\.(nvmrc\|node-version)$` | Files read as Node.js version files (regex on the relative path) |
 | `cf.feed` |  | `SENTINEL_CF_FEED` | `https://raw.githubusercontent.com/cloudfoundry/nodejs-buildpack/master/manifest.yml` | Manifest of the Cloud Foundry Node.js buildpack: a URL, or a path to a downloaded copy |
 | `cf.warnDays` |  | `SENTINEL_CF_WARN_DAYS` | `180` | Warn this many days before a Node.js line leaves the buildpack |
@@ -270,7 +272,7 @@ version in one file are made:
 | Check | What is changed |
 | --- | --- |
 | `ui5-version` | `framework.version` and the fiori-tools-proxy `ui5.version` in `ui5.yaml`, the version in CDN bootstrap URLs (a version is added where none is set), and `"sap.platform.cf".ui5VersionNumber` in `manifest.json` (added where it is missing) |
-| `node-version`, `cf-node-version` | `.nvmrc` and `.node-version` are set to the recommended Node.js major, `"engines.node"` to `^<major>`, a plain lower bound such as `>=18` is raised, and an exact version on Cloud Foundry (`22.11.0`) becomes a range the buildpack can stage (`22.x`). Where the two checks disagree, the version the Cloud Foundry buildpack ships wins |
+| `node-version`, `cf-node-version` | The Node.js version in CI pipelines (`setup-node`, `NodeTool`, `UseNode`) and in `FROM node:<tag>` is moved to the recommended major. `.nvmrc` and `.node-version` are set to the recommended Node.js major, `"engines.node"` to `^<major>`, a plain lower bound such as `>=18` is raised, and an exact version on Cloud Foundry (`22.11.0`) becomes a range the buildpack can stage (`22.x`). Where the two checks disagree, the version the Cloud Foundry buildpack ships wins |
 | `npm-audit` | Overrides in `package.json` that are unused or no longer needed are removed |
 
 Nothing else is changed automatically: not `minUI5Version`, which states
