@@ -425,6 +425,7 @@ test('auto-merge: only for newer patches with "patch", and a refusal leaves the 
   const [refused] = await openPullRequests(report, fixture('app'), { ...opts(provider), autoMerge: 'all', log: (l) => logs.push(l) });
   assert.equal(refused.autoMerge, false);
   assert.match(logs.join('\n'), /auto-merge not turned on for "Update UI5 to 1\.148\.12": no required checks/);
+  assert.doesNotMatch(provider.prs[0].body, /Auto-merge is on/); // the description does not claim it any more
 });
 
 test('GitHub: auto-merge through GraphQL, with a merge method the repository allows', async () => {

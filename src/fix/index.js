@@ -76,8 +76,8 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
     written = await provider.writeBranch(branch, baseBranch, files, group.title, { open: Boolean(open) });
   }
   const merge = autoMerge === 'all' || (autoMerge === 'patch' && onlyPatches(applied));
-  if (merge) notes.push('Auto-merge is on: this pull request is merged once its required checks pass (fix.autoMerge).');
-  const body = pullRequestBody(group, applied, report, notes);
+  const body = pullRequestBody(group, applied, report,
+    merge ? [...notes, 'Auto-merge is on: this pull request is merged once its required checks pass (fix.autoMerge).'] : notes);
   let pr = open;
   let action = 'created';
   if (open) {
@@ -95,6 +95,7 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
     } catch (err) {
       more.autoMerge = false;
       log(`auto-merge not turned on for "${group.title}": ${err.message}`);
+      await provider.updatePullRequest(pr, { title: group.title, body: pullRequestBody(group, applied, report, notes) });
     }
   }
   return { action, created: !open, more };
