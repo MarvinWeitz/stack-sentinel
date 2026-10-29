@@ -144,6 +144,13 @@ export async function detect(root, files, cfg) {
 const show = (v) => v.join('.');
 const list = (items) => (items.length <= 1 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
 
+/** The action to move to Node.js `target`, and the fix that carries it out where a range is declared. */
+function setTarget(finding, target, usage) {
+  finding.action = `Set "engines.node" to "^${target}"`;
+  // binding: what the buildpack ships wins over the node-version check's own recommendation
+  if (usage.range) finding.fix = { kind: 'node-engines', to: `^${target}`, binding: true };
+}
+
 export function evaluate(usage, buildpack, { now, warnDays }) {
   const base = { check: CHECK, source: usage.source, file: usage.file, ...(usage.range ? { version: usage.range } : {}) };
   const findings = [];
@@ -177,6 +184,7 @@ export function evaluate(usage, buildpack, { now, warnDays }) {
     findings.at(-1).action = sameLine
       ? `Use a range such as "${exact[1]}.x" instead of an exact version`
       : `Set "engines.node" to "^${target}"`;
+    if (usage.range) findings.at(-1).fix = { kind: 'node-engines', to: sameLine ? `${exact[1]}.x` : `^${target}`, binding: true };
     return findings;
   }
 
@@ -188,10 +196,10 @@ export function evaluate(usage, buildpack, { now, warnDays }) {
     const days = daysUntil(lastEnd, now);
     if (days < 0) {
       add('warn', `${what} resolves to Node.js ${show(picked)}, which was due to leave the Cloud Foundry buildpack on ${fmt(lastEnd)}.`);
-      if (target > picked[0]) findings.at(-1).action = `Set "engines.node" to "^${target}"`;
+      if (target > picked[0]) setTarget(findings.at(-1), target, usage);
     } else if (days <= warnDays) {
       add('warn', `${what} resolves to Node.js ${show(picked)}, which leaves the Cloud Foundry buildpack on ${fmt(lastEnd)} (${days} days). After that, staging fails.`, { daysLeft: days });
-      if (target > picked[0]) findings.at(-1).action = `Set "engines.node" to "^${target}"`;
+      if (target > picked[0]) setTarget(findings.at(-1), target, usage);
     }
   }
   if (!findings.some((f) => f.severity !== 'info') && usage.range) {

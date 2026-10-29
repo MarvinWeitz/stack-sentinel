@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { azureProvider } from './azure.js';
 import { githubProvider } from './github.js';
-import { applyGroup, planFixes, pullRequestBody, readMarker } from './plan.js';
+import { GROUPS, applyGroup, planFixes, pullRequestBody, readMarker } from './plan.js';
 
 /** Changes the files in the scanned folder itself. Returns [{ group, files, skipped }]. */
 export async function applyFixes(report, root, { fixOn, only }) {
@@ -68,10 +68,11 @@ export async function openPullRequests(report, root, { provider, fixOn, only, br
   // a check that could not run says nothing about whether the finding is still there. One
   // whose kind of fix was turned off is left as it is.
   const failed = new Set(report.findings.filter((f) => f.source === 'check').map((f) => f.check));
-  const covered = { ui5: 'ui5-version', 'npm-overrides': 'npm-audit' };
+  const checksOf = (id) => GROUPS.find((g) => g.id === id)?.checks;
+  const ranCleanly = (id) => checksOf(id).every((c) => report.checks.run.includes(c) && !failed.has(c));
   for (const pr of existing.filter((p) => p.state === 'open')) {
     const id = pr.branch.slice(branchPrefix.length);
-    if (groups.some((g) => g.id === id) || (only && !only.includes(id)) || !covered[id] || !report.checks.run.includes(covered[id]) || failed.has(covered[id])) continue;
+    if (groups.some((g) => g.id === id) || (only && !only.includes(id)) || !checksOf(id) || !ranCleanly(id)) continue;
     await provider.closePullRequest(pr, STALE);
     results.push({ group: id, title: pr.title, action: 'closed', url: pr.url });
   }

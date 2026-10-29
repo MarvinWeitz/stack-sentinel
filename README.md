@@ -107,7 +107,7 @@ its value and where it came from.
 | `scan.maxDepth` | `--max-depth` | `SENTINEL_SCAN_MAX_DEPTH` | `8` | How many folder levels deep to scan |
 | `notify.maxFindings` |  | `SENTINEL_NOTIFY_MAX_FINDINGS` | `25` | Most findings listed in one Teams card |
 | `fix.mode` | `--fix` | `SENTINEL_FIX_MODE` | `off` | Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (see [Fix pull requests](#fix-pull-requests)): `off`, `apply`, `pr` |
-| `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), npm-overrides (npm overrides no longer needed) |
+| `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,node,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), node (Node.js versions), npm-overrides (npm overrides no longer needed) |
 | `fix.on` | `--fix-on` | `SENTINEL_FIX_ON` | `info` | Fix findings at or above this severity: `ok`, `info`, `warn`, `error` |
 | `fix.token` |  | `SENTINEL_FIX_TOKEN` |  | Token that opens the pull requests (default: `GITHUB_TOKEN` or `SYSTEM_ACCESSTOKEN`; not read from the config file) |
 | `fix.branchPrefix` |  | `SENTINEL_FIX_BRANCH_PREFIX` | `stack-sentinel/` | Start of the branch names of fix pull requests |
@@ -270,14 +270,16 @@ version in one file are made:
 | Check | What is changed |
 | --- | --- |
 | `ui5-version` | `framework.version` and the fiori-tools-proxy `ui5.version` in `ui5.yaml`, the version in CDN bootstrap URLs (a version is added where none is set), and `"sap.platform.cf".ui5VersionNumber` in `manifest.json` (added where it is missing) |
+| `node-version`, `cf-node-version` | `.nvmrc` and `.node-version` are set to the recommended Node.js major, `"engines.node"` to `^<major>`, a plain lower bound such as `>=18` is raised, and an exact version on Cloud Foundry (`22.11.0`) becomes a range the buildpack can stage (`22.x`). Where the two checks disagree, the version the Cloud Foundry buildpack ships wins |
 | `npm-audit` | Overrides in `package.json` that are unused or no longer needed are removed |
 
 Nothing else is changed automatically: not `minUI5Version`, which states
 which versions an app supports, not CAP major versions, which need a
-migration, and not vulnerable packages, which need a lockfile update.
+migration, not a missing `"engines.node"`, which would be a guess, and not
+vulnerable packages, which need a lockfile update.
 
 - **One pull request per kind of fix**, on a branch whose name never changes
-  (`stack-sentinel/ui5`, `stack-sentinel/npm-overrides`). Each run updates it
+  (`stack-sentinel/ui5`, `stack-sentinel/node`, `stack-sentinel/npm-overrides`). Each run updates it
   while the findings remain, for example to a newer patch, and closes it when
   they are gone.
 - **Closing a pull request without merging** skips those versions: the next
@@ -289,7 +291,7 @@ migration, and not vulnerable packages, which need a lockfile update.
   fixes UI5 versions only, and leaves npm overrides to be reported. A pull
   request of a kind that is turned off is left open as it is.
 - **At most `fix.maxPullRequests`** (default 5) are open at a time.
-- **Moving to a new release line** (UI5 1.120 to 1.148) is a normal pull
+- **Moving to a new release line** (UI5 1.120 to 1.148, Node.js 20 to 24) is a normal pull
   request too. The project's own checks on the pull request are what show
   whether the app still works.
 - The links to the pull requests are on the Teams card and in the JSON report

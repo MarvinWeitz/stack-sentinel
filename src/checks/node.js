@@ -123,9 +123,10 @@ export function evaluate(usage, lines, opts) {
   for (const f of findings) {
     if (!f.details?.recommended) continue;
     f.recommendation = `Node.js ${rec.major} is supported until ${fmt(rec.end)}`;
-    f.action ??= usage.source === 'version-file'
-      ? `Change it to "${rec.major}"`
-      : `Set "engines.node" to "^${rec.major}"`;
+    if (f.action) continue;
+    const versionFile = usage.source === 'version-file';
+    f.action = versionFile ? `Change it to "${rec.major}"` : `Set "engines.node" to "^${rec.major}"`;
+    f.fix = versionFile ? { kind: 'node-version-file', to: String(rec.major) } : { kind: 'node-engines', to: `^${rec.major}` };
   }
   return findings;
 }
@@ -179,6 +180,8 @@ function judge(usage, lines, { now, requireLts, warnDays }) {
     const first = supported[0];
     add('warn', `${what} still allows Node.js ${lowest.major}, which reached end of life on ${fmt(lowest.end)}.`);
     findings.at(-1).action = `Raise the lowest version "engines.node" allows to ${first.major}`;
+    // only a plain lower bound can be raised without rewriting the range
+    if (usage.source === 'engines' && /^>=\s*\d+(\.\d+){0,2}$/.test(usage.text)) findings.at(-1).fix = { kind: 'node-engines', to: `>=${first.major}` };
   }
   if (requireLts && ltsAllowed.length === 0) {
     add('warn', `${what} only allows Node.js ${best.major}, which is not a long-term support release.`, recDetails(best.major));

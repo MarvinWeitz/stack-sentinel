@@ -6,9 +6,10 @@ import { applyFix } from './edits.js';
  * its branch name, which never changes, so every run finds the pull request an earlier run
  * opened for it. `check` is the check whose findings fill the group.
  */
-const GROUPS = [
-  { id: 'ui5', check: 'ui5-version', kinds: /^ui5-/ },
-  { id: 'npm-overrides', check: 'npm-audit', kinds: /^npm-override-/ },
+export const GROUPS = [
+  { id: 'ui5', checks: ['ui5-version'], kinds: /^ui5-/ },
+  { id: 'node', checks: ['node-version', 'cf-node-version'], kinds: /^node-/ },
+  { id: 'npm-overrides', checks: ['npm-audit'], kinds: /^npm-override-/ },
 ];
 
 /** "1.136.11" -> [1, 136, 11]; "1.136.x" -> [1, 136, Infinity]. */
@@ -22,7 +23,8 @@ const newer = (a, b) => {
 /**
  * The fixes a report's findings carry, grouped. One place in a file can be named by several
  * findings (a line out of maintenance, and a patch removed from the CDN); the one that moves
- * furthest wins. Findings below `fixOn`, and groups not in `only` (ids), are left out.
+ * furthest wins, unless another is binding (what the Cloud Foundry buildpack ships wins over
+ * the newest Node.js release). Findings below `fixOn`, and groups not in `only` (ids), are left out.
  * Returns [{ id, check, title, signature, changes: [{ file, finding }] }].
  */
 export function planFixes(findings, { fixOn = 'info', only = GROUPS.map((g) => g.id) } = {}) {
@@ -33,12 +35,14 @@ export function planFixes(findings, { fixOn = 'info', only = GROUPS.map((g) => g
       if (!f.fix || !f.file || !def.kinds.test(f.fix.kind) || !atLeast(f.severity, fixOn)) continue;
       const place = JSON.stringify([f.file, f.fix.kind, f.version ?? null, f.fix.path ?? null, f.fix.host ?? null]);
       const seen = byPlace.get(place);
-      if (!seen || (f.fix.to && seen.fix.to && newer(f.fix.to, seen.fix.to))) byPlace.set(place, f);
+      const wins = !seen || (Boolean(f.fix.binding) !== Boolean(seen.fix.binding) ? Boolean(f.fix.binding)
+        : f.fix.to && seen.fix.to && newer(f.fix.to.replace(/^\D+/, ''), seen.fix.to.replace(/^\D+/, '')));
+      if (wins) byPlace.set(place, f);
     }
     if (byPlace.size === 0) continue;
     const changes = [...byPlace.values()].map((finding) => ({ file: finding.file, finding }))
       .sort((a, b) => a.file.localeCompare(b.file));
-    groups.push({ id: def.id, check: def.check, ...describe(def.id, changes), changes });
+    groups.push({ id: def.id, checks: def.checks, ...describe(def.id, changes), changes });
   }
   return groups;
 }
@@ -52,6 +56,11 @@ function describe(id, changes) {
     const title = lines.length > 1 ? 'Update UI5 versions'
       : exact.length === 1 ? `Update UI5 to ${exact[0]}` : `Update UI5 to ${lines[0]}`;
     return { title, signature: `ui5 ${targets.join(' ')}` };
+  }
+  if (id === 'node') {
+    const targets = [...new Set(changes.map((c) => c.finding.fix.to))].sort();
+    const majors = [...new Set(targets.map((t) => /\d+/.exec(t)[0]))];
+    return { title: majors.length === 1 ? `Move Node.js to ${majors[0]}` : 'Update Node.js versions', signature: `node ${targets.join(' ')}` };
   }
   const keys = changes.map((c) => `${c.file}:${c.finding.fix.path.join('>')}`).sort();
   const n = changes.length;

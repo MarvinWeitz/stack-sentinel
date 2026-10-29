@@ -17,6 +17,8 @@ export function applyFix(text, finding) {
     case 'ui5-workzone': return workzone(text, version, fix.to);
     case 'ui5-workzone-missing': return workzoneMissing(text, fix.to);
     case 'npm-override-remove': return removeOverride(text, fix.path);
+    case 'node-engines': return engines(text, version, fix.to);
+    case 'node-version-file': return versionFile(text, version, fix.to);
     default: return { skipped: `unknown fix "${fix.kind}"` };
   }
 }
@@ -101,4 +103,21 @@ function removeOverride(text, path) {
   }
   if (Object.keys(json.overrides).length === 0) delete json.overrides;
   return { text: write(json) };
+}
+
+/** Sets "engines.node" in a package.json, where it says `from`. */
+function engines(text, from, to) {
+  const re = new RegExp(`("engines"\\s*:\\s*\\{[^{}]*?"node"\\s*:\\s*")${escapeRe(from)}(\\s*")`, 'g');
+  if ((text.match(re) ?? []).length !== 1) return { skipped: `"engines.node" "${from}" not found once` };
+  const out = text.replace(re, `$1${to}$2`);
+  return parse(out)?.engines?.node === to ? { text: out } : { skipped: 'package.json did not read back as expected' };
+}
+
+/** Changes the version in a .nvmrc or .node-version, keeping comments. */
+function versionFile(text, from, to) {
+  const lines = text.split('\n');
+  const i = lines.findIndex((l) => l.replace(/#.*$/, '').trim() !== '');
+  if (i === -1 || lines[i].replace(/#.*$/, '').trim() !== from) return { skipped: `version ${from} not found` };
+  lines[i] = lines[i].replace(from, to);
+  return { text: lines.join('\n') };
 }

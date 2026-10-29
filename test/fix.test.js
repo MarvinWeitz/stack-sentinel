@@ -302,6 +302,37 @@ test('the Teams card links the fix pull requests', () => {
 
 test('fix.groups accepts only known kinds of fix', async () => {
   assert.deepEqual(resolveSettings({ env: { SENTINEL_FIX_GROUPS: 'ui5' } }).values.fix.groups, ['ui5']);
-  assert.deepEqual(resolveSettings({}).values.fix.groups, ['ui5', 'npm-overrides']);
-  assert.throws(() => resolveSettings({ env: { SENTINEL_FIX_GROUPS: 'ui5,cap' } }), /expected a list of ui5, npm-overrides/);
+  assert.deepEqual(resolveSettings({}).values.fix.groups, ['ui5', 'node', 'npm-overrides']);
+  assert.throws(() => resolveSettings({ env: { SENTINEL_FIX_GROUPS: 'ui5,cap' } }), /expected a list of ui5, node, npm-overrides/);
+});
+
+test('Node.js: changes "engines.node" and version files, keeping the rest of the file', () => {
+  const pkg = '{\n  "name": "a",\n  "engines": { "npm": ">=9", "node": "^20" }\n}\n';
+  assert.equal(applyFix(pkg, finding({ kind: 'node-engines', to: '^24' }, '^20')).text, pkg.replace('"^20"', '"^24"'));
+  assert.match(applyFix(pkg, finding({ kind: 'node-engines', to: '^24' }, '^18')).skipped, /not found once/);
+  // "node" outside "engines" is not touched
+  assert.ok(applyFix('{ "scripts": { "node": "^20" } }', finding({ kind: 'node-engines', to: '^24' }, '^20')).skipped);
+  assert.equal(applyFix('# pinned for CI\nlts/jod\n', finding({ kind: 'node-version-file', to: '24' }, 'lts/jod')).text, '# pinned for CI\n24\n');
+  assert.equal(applyFix('v20.11.0 # keep\n', finding({ kind: 'node-version-file', to: '24' }, 'v20.11.0')).text, '24 # keep\n');
+});
+
+test('Node.js: one pull request for both checks; what Cloud Foundry ships wins', async () => {
+  const report = await scan({
+    root: fixture('cf-app'), now,
+    config: { checks: ['node-version', 'cf-node-version'], node: { feed: fixture('node-schedule.json') }, cf: { feed: fixture('buildpack-manifest.yml') } },
+    fetchJsonImpl: offline, fetchTextImpl: offline,
+  });
+  const [group] = planFixes(report.findings);
+  assert.equal(group.id, 'node');
+  assert.deepEqual(group.changes.map((c) => [c.file, c.finding.version, c.finding.fix.to]), [
+    ['app/orders/package.json', '20.1.0', '^24'],
+    ['package.json', '^20', '^24'],
+    ['router/package.json', '>=18', '>=22'], // only a plain lower bound is raised
+    // node-version would move it to ^24; the buildpack's fix keeps the line and drops the exact version
+    ['tools/api/package.json', '22.11.0', '22.x'],
+  ]);
+  assert.equal(group.title, 'Update Node.js versions');
+  const { files } = await applyGroup(group, (file) => readFile(fixture(`cf-app/${file}`), 'utf8'));
+  assert.equal(JSON.parse(files.get('tools/api/package.json')).engines.node, '22.x');
+  assert.deepEqual(planFixes(report.findings, { only: ['ui5'] }), []);
 });

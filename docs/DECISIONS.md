@@ -541,10 +541,19 @@ finding comes with the change that fixes it. It is off by default
 
 **Only safe text edits.** A fix is made when the finding's action names one
 value in one file: UI5 versions in `ui5.yaml`, bootstrap URLs and the Work
-Zone pin, and npm overrides that no longer do anything. `minUI5Version` is a
-statement of support and is never raised. CAP majors need a migration.
-Vulnerable packages need a lockfile update, which means running npm; the
-tool starts no child processes. Node.js versions were left for later.
+Zone pin, Node.js versions in `"engines.node"` and version files, and npm
+overrides that no longer do anything. `minUI5Version` is a statement of
+support and is never raised. CAP majors need a migration. A missing
+`"engines.node"` is not added, because the version would be a guess, and a
+range is only rewritten when it is a plain lower bound (`>=18`). Vulnerable
+packages need a lockfile update, which means running npm; the tool starts no
+child processes.
+
+**For Node.js, what Cloud Foundry ships wins.** `node-version` recommends the
+newest long-term support release, `cf-node-version` the line the buildpack
+keeps longest. When both want to change the same `"engines.node"`, the
+buildpack's choice is taken, because a version it does not ship fails
+staging.
 
 **Fixes are data on the finding.** Each fixable finding carries a `fix`
 (`kind`, `to`, ...) beside its `action`, set where the action is, so the edit
@@ -591,10 +600,11 @@ line is opened like a patch; the project's own checks decide.
 
 ## Unverified and open
 
-- **Fix pull requests have not been opened on a real repository.** The GitHub
-  and Azure DevOps calls are tested against recorded shapes only. On Azure
-  DevOps it is assumed that the build service may delete the branches it
-  created, which is how a branch left from a closed pull request starts over.
+- **Fix pull requests were tried on one GitHub test repository only**
+  (2026-10-29: opened, and left unchanged on the next run). The Azure DevOps
+  calls are tested against recorded shapes only, and it is assumed that the
+  build service may delete the branches it created, which is how a branch
+  left from a closed pull request starts over.
 - **Nobody has seen a real Teams card.** The payload is tested for shape, not
   for how Teams renders it.
 - **Not yet run on a customer project or in a customer pipeline.** Detection
