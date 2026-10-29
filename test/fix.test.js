@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { cp, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -355,4 +355,45 @@ test('Node.js in CI files and Dockerfiles: found in the steps that set it up, an
   assert.match(files.get('.github/workflows/ci.yml'), /python-version: "3\.12"/);
   assert.match(files.get('azure-pipelines.yml'), /versionSpec: "3\.12"[\s\S]*versionSpec: "24\.x"[\s\S]*version: "24"/);
   assert.equal(files.get('Dockerfile'), 'FROM --platform=linux/amd64 node:24-alpine AS build\nWORKDIR /app\nFROM docker.io/library/node:24-alpine\nFROM node:lts-slim\nFROM node@sha256:0000\n');
+});
+
+test('GitHub: workflow files the token may not change are left out, and the rest still goes through', async () => {
+  // a repository of its own, so .github/workflows is at its top
+  const dir = await mkdtemp(join(tmpdir(), 'sentinel-workflows-'));
+  try {
+    await cp(fixture('node-ci'), dir, { recursive: true });
+    await mkdir(join(dir, '.git'));
+    const report = await scan({ root: dir, now, config: { checks: ['node-version'], node: { feed: fixture('node-schedule.json') } }, fetchJsonImpl: offline });
+    const files = {};
+    for (const f of ['.github/workflows/ci.yml', 'azure-pipelines.yml', 'Dockerfile']) files[f] = await readFile(join(dir, f), 'utf8');
+    const provider = fakeProvider(files);
+    provider.platform = 'github';
+    const write = provider.writeBranch;
+    provider.writeBranch = async (branch, base, changed, ...rest) => {
+      if ([...changed.keys()].some((f) => f.startsWith('.github/workflows/'))) throw Object.assign(new Error('HTTP 403'), { status: 403 });
+      return write(branch, base, changed, ...rest);
+    };
+    const [result] = await openPullRequests(report, dir, opts(provider));
+    assert.equal(result.action, 'created');
+    assert.deepEqual(JSON.parse(provider.branches.get('stack-sentinel/node')).map(([f]) => f).sort(), ['Dockerfile', 'azure-pipelines.yml']);
+    assert.match(provider.prs[0].body, /Not changed: `\.github\/workflows\/ci\.yml`\. GitHub lets only a token with the "Workflows" permission/);
+    // any other failure of one group is reported, and the other groups go on
+    provider.writeBranch = async () => { throw new Error('HTTP 500'); };
+    const failed = await openPullRequests(report, dir, opts(provider));
+    assert.deepEqual(failed.map((r) => [r.action, r.reason]), [['failed', 'HTTP 500']]);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a local Fiori preview without a version is pinned to what the app builds with', async () => {
+  const yaml = 'server:\n  customMiddleware:\n    - name: fiori-tools-proxy\n      configuration:\n        ui5:\n          path:\n            - /resources\n          url: https://ui5.sap.com\n';
+  assert.equal(applyFix(yaml, finding({ kind: 'ui5-preview-missing', to: '1.148.12' })).text, yaml.replace('ui5:\n', 'ui5:\n          version: 1.148.12\n'));
+  assert.equal(applyFix(yaml.replace('url: https', 'version: ""\n          url: https'), finding({ kind: 'ui5-preview-missing', to: '1.148.12' })).text,
+    yaml.replace('url: https', 'version: "1.148.12"\n          url: https'));
+  assert.ok(applyFix(yaml.replace('url:', 'version: 1.120.0\n          url:'), finding({ kind: 'ui5-preview-missing', to: '1.148.12' })).skipped);
+  const report = await scan({ root: fixture('fiori-app'), now, config: ui5Config, fetchJsonImpl: offline });
+  const note = report.findings.find((f) => f.file === 'app1/ui5-mock.yaml');
+  // app1 builds with nothing pinned in its own folder, so the recommended version is used
+  assert.deepEqual(note.fix, { kind: 'ui5-preview-missing', to: '1.148.12' });
 });

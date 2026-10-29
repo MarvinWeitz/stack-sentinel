@@ -14,6 +14,7 @@ export function applyFix(text, finding) {
   switch (fix.kind) {
     case 'ui5-framework': return yamlLine(text, frameworkVersionLine, version, fix.to);
     case 'ui5-preview': return yamlLine(text, previewVersionLine, version, fix.to);
+    case 'ui5-preview-missing': return previewMissing(text, fix.to);
     case 'ui5-bootstrap': return bootstrap(text, fix.host, version, fix.to);
     case 'ui5-workzone': return workzone(text, version, fix.to);
     case 'ui5-workzone-missing': return workzoneMissing(text, fix.to);
@@ -134,5 +135,23 @@ function onLines(text, found, from, to, anchor = /(:\s*["']?)/) {
   const lines = text.split('\n');
   const re = new RegExp(`${anchor.source}${escapeRe(from)}(?![\\w.])`);
   for (const i of found.lines) lines[i] = lines[i].replace(re, `$1${to}`);
+  return { text: lines.join('\n') };
+}
+
+/** Adds `version: to` to the fiori-tools-proxy ui5 block, or fills in a version that is not one. */
+function previewMissing(text, to) {
+  const lines = text.split('\n');
+  const found = previewVersionLine(lines.map((l) => l.replace(/\r$/, '')));
+  if (!found || found.version) return { skipped: 'the preview already has a version' };
+  if (found.index != null) {
+    lines[found.index] = lines[found.index].replace(/^(\s+version:\s*["']?)[^"'\s#]*/, `$1${to}`);
+    return { text: lines.join('\n') };
+  }
+  const indentOf = (line) => line.length - line.trimStart().length;
+  const depth = indentOf(lines[found.block]);
+  const child = lines.slice(found.block + 1).find((l) => l.trim() !== '' && !l.trim().startsWith('#'));
+  const indent = child && indentOf(child) > depth ? indentOf(child) : depth + 2;
+  const cr = lines[found.block].endsWith('\r') ? '\r' : '';
+  lines.splice(found.block + 1, 0, `${' '.repeat(indent)}version: ${to}${cr}`);
   return { text: lines.join('\n') };
 }

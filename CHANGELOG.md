@@ -10,6 +10,8 @@ release notes.
 
 ## Unreleased
 
+- The fix for the UI5 version pins a local Fiori preview (fiori-tools-proxy)
+  that loads the latest release to the version the app builds with.
 - `node-version` also reads the Node.js version that CI pipelines set up
   (GitHub's `actions/setup-node`, Azure Pipelines' `NodeTool` and `UseNode`)
   and the `node` image Dockerfiles build on, and fix pull requests move them.
