@@ -284,11 +284,10 @@ made when `fix.groups` names them:
 | `cap` | A CAP package (`cap-version`) on an old major moves to `^<current major>` in `package.json`, and the lockfile next to it is updated with `npm install --package-lock-only --ignore-scripts`. It opens as a **draft**, as a new major can need code changes (see the [CAP release notes](https://cap.cloud.sap/docs/releases/)) |
 | `npm-audit` | Vulnerable packages that `npm audit fix` can move on its own, after raising a range the project's own `package.json` pins below the fix to the oldest published release that fixes it (`"lodash": "4.17.20"` becomes `"4.18.0"`), are moved with `npm install` and `npm audit fix`, both with `--package-lock-only --ignore-scripts`. A package that a dependency's own range or a bundled copy holds back is left to a person, and so is a package npm did not move |
 
-npm runs in a temporary folder with only `package.json`, `package-lock.json`
-and `.npmrc`, so no packages are installed and no package scripts run. It
+npm runs in a temporary folder with only `package-lock.json`, `.npmrc` and
+the `package.json` files the lockfile covers (the project's and those of its
+npm workspaces), so no packages are installed and no package scripts run. It
 needs `npm` on the path and access to the registry, as an `npm install` has.
-A lockfile that covers npm workspaces is not changed: the pull request says
-so, and a `cap` pull request then changes `package.json` alone.
 
 Nothing else is changed automatically: not `minUI5Version`, which states
 which versions an app supports, and not a missing `"engines.node"` outside

@@ -228,6 +228,8 @@ test('a fix for the fix pull requests only where npm can do it alone, after rais
   assert.deepEqual(fixOf('1.0.0'), { kind: 'npm-audit', name: 'vuln', to: '1.1.0', raise: [{ manifest: 'a/package.json', from: '1.0.0', to: '1.1.0' }] });
   assert.equal(fixOf('~1.0.0').raise[0].to, '~1.1.0');
   assert.equal(fixOf('>=1.0.0 <1.1.0').raise[0].to, '^1.1.0');
-  const workspaces = { lockfileVersion: 3, packages: { '': { workspaces: ['p'] }, p: { name: 'p', version: '1.0.0', dependencies: { vuln: '^1.0.0' } }, 'node_modules/vuln': { version: '1.0.0' } } };
-  assert.equal(evaluate('package-lock.json', installedPackages(workspaces), madeAdvisories, policy, dependencyGraph(workspaces))[0].fix, undefined);
+  // a workspace's own package.json is raised like the project's
+  const workspaces = { lockfileVersion: 3, packages: { '': { workspaces: ['p'] }, p: { name: 'p', version: '1.0.0', dependencies: { vuln: '1.0.0' } }, 'node_modules/p': { link: true, resolved: 'p' }, 'node_modules/vuln': { version: '1.0.0' } } };
+  assert.deepEqual(evaluate('package-lock.json', installedPackages(workspaces), madeAdvisories, policy, dependencyGraph(workspaces))[0].fix,
+    { kind: 'npm-audit', name: 'vuln', to: '1.1.0', raise: [{ manifest: 'p/package.json', from: '1.0.0', to: '1.1.0' }] });
 });

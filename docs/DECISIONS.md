@@ -555,11 +555,12 @@ lockfile correctly; a hand-written one would be a guess. When asked for
 with `--package-lock-only --ignore-scripts` in a temporary folder holding
 only `package.json`, `package-lock.json` and `.npmrc`: nothing is installed,
 no package scripts run, and the checkout is not touched. The scan itself
-still starts no process. A lockfile covering npm workspaces is left alone,
-since npm needs every workspace's `package.json` for it. `cap` opens as a
+still starts no process. For a lockfile that covers npm workspaces, every
+workspace's `package.json` goes into the folder too, found from the
+lockfile's own list of them, so npm sees the whole project. `cap` opens as a
 draft, because a new major can need code changes, and is never set to
 auto-merge. `npm-audit` only takes findings where `npm audit fix` can do the
-work after raising a range in the project's own `package.json`, keeping its
+work after raising a range in the project's or a workspace's own `package.json`, keeping its
 style (exact stays exact, `~` stays `~`); afterwards it checks that each
 package moved, and drops what npm left, with its raised range, so a
 `package.json` never asks for what the lockfile does not hold. `npm audit

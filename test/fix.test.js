@@ -471,19 +471,30 @@ test('CAP: only when asked for, one draft group per repository, each package to 
   assert.equal(one.title, 'Upgrade @sap/cds to 10');
 });
 
-test('CAP: the pull request is a draft, says to read the release notes, and leaves a workspace lockfile to npm', async () => {
+test('CAP: the pull request is a draft, says to read the release notes, and updates a workspace lockfile with all its workspaces', async () => {
   const report = await capReport();
   const files = {};
-  for (const f of ['package.json', 'package-lock.json', 'services/legacy/package.json']) files[`test/fixtures/cap-app/${f}`] = await readFile(fixture(`cap-app/${f}`), 'utf8');
+  for (const f of ['package.json', 'services/legacy/package.json', 'services/fresh/package.json']) files[`test/fixtures/cap-app/${f}`] = await readFile(fixture(`cap-app/${f}`), 'utf8');
+  // the lockfile as npm writes it, listing its workspaces
+  const lock = (cds) => `${JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'services/legacy': { name: 'legacy' }, 'services/fresh': { name: 'fresh' }, 'node_modules/@sap/cds': { version: cds } } })}\n`;
+  files['test/fixtures/cap-app/package-lock.json'] = lock('9.4.4');
   const provider = fakeProvider(files);
   const ran = [];
-  const [result] = await openPullRequests(report, fixture('cap-app'), { ...opts(provider), only: ['cap'], runNpm: async (args) => ran.push(args) });
+  const runNpm = async (args, cwd) => {
+    const legacy = JSON.parse(await readFile(join(cwd, 'services/legacy/package.json'), 'utf8'));
+    ran.push([args[0], legacy.dependencies['@sap/cds'], JSON.parse(await readFile(join(cwd, 'services/fresh/package.json'), 'utf8')).name]);
+    await writeFile(join(cwd, 'package-lock.json'), lock('10.1.1'));
+  };
+  const [result] = await openPullRequests(report, fixture('cap-app'), { ...opts(provider), only: ['cap'], runNpm });
   assert.equal(result.action, 'created');
   assert.equal(provider.prs[0].draft, true);
   assert.match(provider.prs[0].body, /release notes\]\(https:\/\/cap\.cloud\.sap\/docs\/releases\/\)/);
   assert.match(provider.prs[0].body, /`\^7` → `\^10`/);
-  assert.match(provider.prs[0].body, /Not changed: `test\/fixtures\/cap-app\/package-lock\.json`, because it covers npm workspaces/);
-  assert.deepEqual(ran, []);
+  assert.doesNotMatch(provider.prs[0].body, /Not changed/);
+  assert.deepEqual(ran, [['install', '^10', JSON.parse(files['test/fixtures/cap-app/services/fresh/package.json']).name]]);
+  const written = new Map(JSON.parse(provider.branches.get('stack-sentinel/cap')));
+  assert.equal(written.get('test/fixtures/cap-app/package-lock.json'), lock('10.1.1'));
+  assert.deepEqual([...written.keys()].sort(), ['test/fixtures/cap-app/package-lock.json', 'test/fixtures/cap-app/package.json', 'test/fixtures/cap-app/services/legacy/package.json']);
 });
 
 const lockWith = (version) => `${JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/a': { version } } })}\n`;

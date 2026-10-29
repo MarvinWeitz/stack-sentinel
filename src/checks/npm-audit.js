@@ -247,11 +247,11 @@ const raisedRange = (range, fixed) => (/^\d/.test(range) ? fixed : /^~/.test(ran
 /**
  * What "npm audit fix" can do on its own, as a fix for the fix pull requests: move the
  * package within the ranges that ask for it, after raising the ranges the project's own
- * package.json sets. Nothing when a dependency's own range, a bundled copy or npm
- * workspaces stand in the way; those need a person.
+ * package.json files set (the project's, or a workspace's). Nothing when a dependency's
+ * own range or a bundled copy stands in the way; those need a person.
  */
 function lockfileFix({ graph, targets }, pkg, fixed, lockfile) {
-  if (graph.roots.size !== 1 || targets.some((t) => graph.nodes.get(t).bundled)) return {};
+  if (targets.some((t) => graph.nodes.get(t).bundled)) return {};
   const raise = [];
   for (const path of targets) {
     for (const edge of graph.parents.get(path) ?? []) {
