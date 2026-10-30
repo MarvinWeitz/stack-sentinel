@@ -103,7 +103,7 @@ test('scans a project: engines in several package.json files and a version file'
     config: { checks: ['node-version'], node: { feed: fixture('node-schedule.json') } },
     fetchJsonImpl: async () => { throw new Error('network must not be used'); },
   });
-  assert.deepEqual(report.checks, { run: ['node-version'], skipped: ['ui5-version', 'cf-node-version', 'cap-version', 'npm-audit'] });
+  assert.deepEqual(report.checks, { run: ['node-version'], skipped: ['ui5-version', 'cf-node-version', 'cap-version', 'npm-audit', 'license'] });
   assert.deepEqual(report.findings.map((f) => [f.file, f.source, f.severity]), [
     ['package.json', 'engines', 'error'],
     ['router/package.json', 'engines', 'warn'],

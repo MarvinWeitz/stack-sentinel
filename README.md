@@ -57,6 +57,7 @@ the file has to be edited.
 | [`cf-node-version`](docs/CHECKS.md#cf-node-version) | Node.js apps on Cloud Foundry asking for a version the buildpack no longer ships | Cloud Foundry Node.js buildpack |
 | [`cap-version`](docs/CHECKS.md#cap-version) | CAP packages on a major version SAP no longer supports | npm registry |
 | [`npm-audit`](docs/CHECKS.md#npm-audit) | Installed npm packages with known vulnerabilities | npm audit service |
+| [`license`](docs/CHECKS.md#license) | Installed npm packages whose license the policy does not allow, such as strong copyleft | `license.deny` and `license.allow` |
 
 Every finding has a severity (`error`, `warn`, `info` or `ok`), and those that
 call for a change say what to change, for example "Set framework.version to
@@ -146,6 +147,10 @@ its value and where it came from.
 | `audit.reportFrom` |  | `SENTINEL_AUDIT_REPORT_FROM` | `moderate` | Vulnerabilities below this advisory severity are not reported: `info`, `low`, `moderate`, `high`, `critical` |
 | `audit.warnAt` |  | `SENTINEL_AUDIT_WARN_AT` | `high` | Advisory severity from which a vulnerability is a warning (below: info): `info`, `low`, `moderate`, `high`, `critical` |
 | `audit.errorAt` |  | `SENTINEL_AUDIT_ERROR_AT` | `critical` | Advisory severity from which a vulnerability is an error: `info`, `low`, `moderate`, `high`, `critical` |
+| `license.lockfilePattern` |  | `SENTINEL_LICENSE_LOCKFILE_PATTERN` | `(^\|/)(package-lock\|npm-shrinkwrap)\.json$` | Lockfiles whose installed packages' licenses are checked (regex on the relative path) |
+| `license.deny` |  | `SENTINEL_LICENSE_DENY` | `AGPL-1.0,AGPL-3.0,GPL-1.0,GPL-2.0,GPL-3.0,SSPL-1.0,EUPL-1.1,EUPL-1.2,OSL-3.0` | SPDX license ids that are errors (strong copyleft by default; -only and -or-later variants match; replaces the default list) |
+| `license.allow` |  | `SENTINEL_LICENSE_ALLOW` | `(none)` | SPDX license ids that are allowed; when set, any other license is a warning (default: everything not denied) |
+| `license.unknown` |  | `SENTINEL_LICENSE_UNKNOWN` | `info` | Severity for a package without an SPDX license, e.g. "SEE LICENSE IN LICENSE" or none: `ok`, `info`, `warn`, `error` |
 
 List values are comma-separated in flags and environment variables, and JSON
 arrays in the config file. Example config:

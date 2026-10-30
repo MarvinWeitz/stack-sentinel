@@ -100,6 +100,16 @@ export const SETTINGS = [
     desc: 'Advisory severity from which a vulnerability is a warning (below: info)' },
   { key: 'audit.errorAt', type: 'enum', values: ['info', 'low', 'moderate', 'high', 'critical'], default: 'critical',
     desc: 'Advisory severity from which a vulnerability is an error' },
+
+  { key: 'license.lockfilePattern', type: 'regex', default: '(^|/)(package-lock|npm-shrinkwrap)\\.json$',
+    desc: 'Lockfiles whose installed packages\' licenses are checked (regex on the relative path)' },
+  { key: 'license.deny', type: 'list',
+    default: ['AGPL-1.0', 'AGPL-3.0', 'GPL-1.0', 'GPL-2.0', 'GPL-3.0', 'SSPL-1.0', 'EUPL-1.1', 'EUPL-1.2', 'OSL-3.0'],
+    desc: 'SPDX license ids that are errors (strong copyleft by default; -only and -or-later variants match; replaces the default list)' },
+  { key: 'license.allow', type: 'list', default: [],
+    desc: 'SPDX license ids that are allowed; when set, any other license is a warning (default: everything not denied)' },
+  { key: 'license.unknown', type: 'enum', values: LEVELS, default: 'info',
+    desc: 'Severity for a package without an SPDX license, e.g. "SEE LICENSE IN LICENSE" or none' },
 ];
 
 export const envName = (def) =>

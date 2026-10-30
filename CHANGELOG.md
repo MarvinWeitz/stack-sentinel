@@ -10,6 +10,9 @@ release notes.
 
 ## Unreleased
 
+- New check `license`: the licenses of the packages in `package-lock.json`
+  are checked against a policy. Strong copyleft (AGPL, GPL, SSPL, EUPL, OSL)
+  is an error by default; `license.allow` turns it into an allow list.
 - The title of an `npm-audit` fix pull request names the versions npm moved
   to, not the lowest fixed versions the advisories name, which npm may
   never have published (lodash 4.17.24, where npm moves to 4.18.0).

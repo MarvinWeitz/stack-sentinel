@@ -19,6 +19,7 @@ Status as of 2026-10-11. Everything here was decided on that day unless noted.
 - [Check: cf-node-version](#check-cf-node-version)
 - [Check: cap-version](#check-cap-version)
 - [Check: npm-audit](#check-npm-audit)
+- [Check: license](#check-license)
 - [Fix pull requests](#fix-pull-requests)
 - [Ignore rules, release age and release notes](#ignore-rules-release-age-and-release-notes)
 - [Deliberately not built](#deliberately-not-built)
@@ -530,6 +531,30 @@ are not part of the deployed app.
 
 **Only npm lockfiles.** CAP and UI5 projects use npm. yarn and pnpm lockfiles
 have different formats and are not read.
+
+## Check: license
+
+Decided 2026-10-30, asked for because companies that build with the tool
+need to know which licenses they ship.
+
+**Licenses come from the lockfile.** npm copies each package's `license`
+into lockfile versions 2 and 3, so the check needs no network and no
+`node_modules`. Lockfile version 1 has none and is only reported as such;
+fetching every package from the registry would be slow for a gap that
+`npm install` with any current npm closes.
+
+**The default policy denies strong copyleft only.** AGPL, GPL, SSPL, EUPL
+and OSL can oblige a company to publish its own code; that is the risk a
+check should catch without being told. Weak copyleft (LGPL, MPL) and
+permissive licenses pass. A stricter company sets `license.allow`, and every
+license not on it becomes a warning. Lists match ids without their `-only`,
+`-or-later` or `+` variant, as policies are usually written per license.
+
+**A package without an SPDX license is info by default.** SAP's own packages,
+`@sap/cds` among them, declare `"SEE LICENSE IN LICENSE"`, so a warning
+would hit every CAP project. `license.unknown` raises it for companies that
+want each one reviewed. Approvals for single packages are ignore rules, with
+a reason, rather than another list.
 
 ## Fix pull requests
 
