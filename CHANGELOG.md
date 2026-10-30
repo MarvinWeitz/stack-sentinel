@@ -10,6 +10,10 @@ release notes.
 
 ## Unreleased
 
+- Ignore rules: findings listed under `"ignore"` in the config file, by
+  check, file, package, version, advisory or message, are left out of
+  notifications, the exit code and fix pull requests until the rule's
+  `until` date. An expired rule, and one that matches nothing, is reported.
 - Two opt-in kinds of fix pull request that run npm to update
   `package-lock.json` (`--package-lock-only --ignore-scripts`, in a temporary
   folder): `cap` moves CAP packages on an old major to the current one, as a

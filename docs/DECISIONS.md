@@ -20,6 +20,7 @@ Status as of 2026-10-11. Everything here was decided on that day unless noted.
 - [Check: cap-version](#check-cap-version)
 - [Check: npm-audit](#check-npm-audit)
 - [Fix pull requests](#fix-pull-requests)
+- [Ignore rules, release age and release notes](#ignore-rules-release-age-and-release-notes)
 - [Deliberately not built](#deliberately-not-built)
 - [Unverified and open](#unverified-and-open)
 
@@ -611,6 +612,28 @@ a pin or moving to another line is not a patch.
 
 **Major version moves are normal pull requests.** Moving to a new UI5 release
 line is opened like a patch; the project's own checks decide.
+
+## Ignore rules, release age and release notes
+
+Decided 2026-10-30, after comparing the tool with Dependabot, Renovate, Snyk,
+Socket and OSV-Scanner. These three were picked from a longer list because
+they are small and make fix pull requests safer to merge by themselves.
+
+**Ignore rules live in the config file and end on a date.** Snyk's `.snyk`
+file and Dependabot's `ignore` are the models. A finding the team accepts
+would otherwise come back on every run, and the only way out was a lower
+threshold or skipping the whole check. In the repository, the decision is
+reviewed like any change; `until` brings it back for review instead of
+hiding it for good. An expired rule and one that matches nothing are
+reported as info, so the list does not rot. A rule must name more than a
+check, because hiding all of a check's findings, including future ones, is
+what `skipChecks` is for and should look like that.
+
+**Advisories are ignored one at a time.** npm-audit makes one finding per
+package, but a package can have several advisories. Ignoring the finding when
+any advisory is named would hide the others; so the check leaves out the
+named advisories and judges the package by the rest, and only a package with
+none left is set aside.
 
 ## Deliberately not built
 

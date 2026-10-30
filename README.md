@@ -178,6 +178,51 @@ Notes on the UI5 settings:
   that host their own UI5 library. Each URL must return JSON with a top-level
   `version` field. Apps on SAP BTP do not need one.
 
+<a id="ignore"></a>
+
+## 🙈 Ignoring findings
+
+A finding the team has looked at and decided to live with, for now, can be
+ignored in the config file. Each rule names what it matches, and ends on a
+date, so the decision comes back for review instead of being forgotten:
+
+```json
+{
+  "ignore": [
+    { "advisory": "GHSA-29mw-wpgm-hmr9", "until": "2027-01-31", "reason": "lodash is only used by a build script" },
+    { "check": "ui5-version", "file": "^legacy/", "until": "2026-12-31", "reason": "The legacy app is retired in December" },
+    { "check": "cap-version", "package": "@sap/cds", "version": "8.9.4" }
+  ]
+}
+```
+
+| Field | Matches |
+| --- | --- |
+| `check` | The check id (see [Checks](#checks)) |
+| `file` | The finding's file (regex on the relative path) |
+| `package` | An npm package (`npm-audit`, `cap-version`) |
+| `version` | The version the finding is about, exactly |
+| `advisory` | A vulnerability, by GitHub advisory id (`GHSA-...`) or npm advisory number |
+| `message` | The finding's text (regex) |
+| `until` | Last day the rule applies (`YYYY-MM-DD`); without it, the rule never ends |
+| `reason` | Why, shown with the ignored finding |
+
+- **Every field a rule gives must match**, and it must give at least one of
+  `file`, `package`, `version`, `advisory` or `message`. To stop a whole
+  check, use `skipChecks` instead.
+- **An ignored advisory is left out on its own.** A package with other
+  advisories is still reported, with the severity of the ones that are left.
+- **Ignored findings are not notified, do not fail the run and are not
+  fixed.** The report lists them under `ignored`, with the reason and date,
+  and the Teams card says how many there are.
+- **A rule past its date stops applying**, and the report says so (info), so
+  the finding is back and the rule can be removed or given a new date.
+- **A rule that matches nothing is reported too** (info), once every check it
+  could match has run cleanly.
+- A rule that cannot be read stops the run with exit code `2`.
+- `ignore` can also be set in a [shared config](#shared-config). As with
+  other lists, a project's own `ignore` list replaces it.
+
 <a id="shared-config"></a>
 
 ## 🌐 Shared config

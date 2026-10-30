@@ -23,6 +23,10 @@ export function teamsPayload(report, threshold, maxFindings) {
   if (shown.length > maxFindings) body.push({ type: 'TextBlock', isSubtle: true, text: `…and ${shown.length - maxFindings} more.` });
   // why the versions named in the actions: once per card, at the end
   for (const text of recommendations(relevant)) body.push({ type: 'TextBlock', isSubtle: true, wrap: true, text: `${text}.` });
+  if (report.ignored?.length) {
+    const n = groupFindings(report.ignored).length;
+    body.push({ type: 'TextBlock', isSubtle: true, wrap: true, text: `${n} finding${n === 1 ? ' is' : 's are'} ignored by rules in the config file.` });
+  }
   const prs = (report.pullRequests ?? []).filter((pr) => pr.url && pr.action !== 'closed');
   if (prs.length) {
     body.push({ type: 'TextBlock', weight: 'Bolder', wrap: true, text: 'Fix pull requests' });
