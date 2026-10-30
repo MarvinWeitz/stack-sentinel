@@ -3,6 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { azureProvider } from './azure.js';
 import { githubProvider } from './github.js';
+import { releaseNotes } from './notes.js';
 import { refreshLockfiles } from './npm.js';
 import { GROUPS, applyGroup, onlyPatches, planFixes, pullRequestBody, readMarker } from './plan.js';
 
@@ -65,7 +66,7 @@ const WORKFLOWS = 'GitHub lets only a token with the "Workflows" permission chan
   + 'To have them changed too, set SENTINEL_FIX_TOKEN to a token with "Contents", "Pull requests" and "Workflows" write access.';
 
 /** Commits one group's changes to its branch and opens or updates its pull request. */
-async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge = 'off', runNpm, before }) {
+async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge = 'off', runNpm, before, fetchJson, registry }) {
   // the edits are made to the default branch as it is now, not to the files the scan saw
   const read = (file) => provider.readFile(baseBranch, file);
   let { files, applied, skipped } = await applyGroup({ ...group, changes: group.changes.map((c) => ({ ...c, file: inRepo(c.file) })) }, read);
@@ -101,8 +102,10 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
     written = await provider.writeBranch(branch, baseBranch, files, group.title, { open: Boolean(open) });
   }
   const merge = autoMerge === 'all' || (autoMerge === 'patch' && onlyPatches(applied));
+  // Azure DevOps allows 4000 characters in a description: links only there
+  const changes = await releaseNotes(group, applied, { fetchJson, registry, withBodies: provider.platform !== 'azure-devops' });
   const body = pullRequestBody(group, applied, report,
-    merge ? [...notes, 'Auto-merge is on: this pull request is merged once its required checks pass (fix.autoMerge).'] : notes);
+    merge ? [...notes, 'Auto-merge is on: this pull request is merged once its required checks pass (fix.autoMerge).'] : notes, changes);
   let pr = open;
   let action = 'created';
   if (open) {
@@ -120,7 +123,7 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
     } catch (err) {
       more.autoMerge = false;
       log(`auto-merge not turned on for "${group.title}": ${err.message}`);
-      await provider.updatePullRequest(pr, { title: group.title, body: pullRequestBody(group, applied, report, notes) });
+      await provider.updatePullRequest(pr, { title: group.title, body: pullRequestBody(group, applied, report, notes, changes) });
     }
   }
   return { action, created: !open, more };
@@ -132,7 +135,9 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
  * requests on those branches are the memory. Returns what happened to each group:
  * [{ group, title, action: 'created' | 'updated' | 'unchanged' | 'closed' | 'skipped', url?, reason? }].
  */
-export async function openPullRequests(report, root, { provider, fixOn, only, branchPrefix, maxPullRequests, autoMerge = 'off', log = () => {}, runNpm, before }) {
+export async function openPullRequests(report, root, {
+  provider, fixOn, only, branchPrefix, maxPullRequests, autoMerge = 'off', log = () => {}, runNpm, before, fetchJson, registry,
+}) {
   const prefix = relative(repositoryRoot(root), root).split(sep).filter(Boolean).join('/');
   const inRepo = (file) => (prefix ? `${prefix}/${file}` : file);
   const groups = planFixes(report.findings, { fixOn, only });
@@ -169,7 +174,7 @@ export async function openPullRequests(report, root, { provider, fixOn, only, br
     }
     // one group that fails does not stop the others; the run still ends as a tool failure
     try {
-      const done = await writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge, runNpm, before });
+      const done = await writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge, runNpm, before, fetchJson, registry });
       if (done.created) openCount++;
       result(done.action, done.more);
     } catch (err) {

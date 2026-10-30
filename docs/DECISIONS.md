@@ -651,6 +651,19 @@ package npm moves, not only the one named. It applies to security fixes as
 well: that is the safer default for auto-merged pull requests, and `0`
 turns it off.
 
+**Release notes come from where each project publishes them.** Renovate and
+Dependabot put release notes in their pull requests, which is what makes a
+pull request reviewable without leaving it. UI5, Node.js and CAP publish
+change logs at fixed addresses, so those are links. npm packages have no
+common place; GitHub releases are the most common, found through the
+`repository` field of the package's latest version. Their text is someone
+else's: mentions and issue references are broken, and GitHub links go
+through `redirect.github.com`, as Dependabot does, so a fix pull request does
+not notify strangers or appear in their issues. Reading them is best effort;
+a failure becomes a link and never stops the pull request. Azure DevOps gets
+links only, because its 4000-character description limit would cut the
+table.
+
 ## Deliberately not built
 
 | Idea | Why not, or not yet |

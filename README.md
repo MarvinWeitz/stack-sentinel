@@ -368,6 +368,17 @@ Cloud Foundry, which would be a guess.
   by itself once its branch policies pass. If it cannot be turned on, the
   pull request stays open and the output says why. Draft pull requests
   (`cap`) are never set to merge.
+- **Release notes** are part of each pull request: links to the SAPUI5
+  change log of the new version, the Node.js change log of the new major and
+  the CAP release notes. For `npm-audit`, each package lists the advisories
+  it fixes and, when its repository is on GitHub, the release notes published
+  there between the old and the new version (the newest five, folded). Text
+  from those releases cannot notify anyone or link issues: mentions and
+  `#123` references are broken, and GitHub links go through
+  `redirect.github.com`. On GitHub Actions the requests use the pipeline's
+  token, against the API's rate limit for anonymous use. On Azure DevOps,
+  whose descriptions hold 4000 characters, there are links only. Release
+  notes that cannot be read become a link; they never stop a pull request.
 - **Wait before moving to a new release** with `minReleaseAgeDays`, like
   Renovate's `minimumReleaseAge`: `SENTINEL_MIN_RELEASE_AGE_DAYS=3` moves
   only to releases that have been out for three days, so a broken or

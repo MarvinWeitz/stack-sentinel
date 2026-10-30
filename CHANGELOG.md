@@ -10,6 +10,9 @@ release notes.
 
 ## Unreleased
 
+- Fix pull requests carry release notes: the SAPUI5, Node.js and CAP change
+  logs, and for vulnerable npm packages the advisories they fix and the
+  GitHub release notes between the old and the new version.
 - `minReleaseAgeDays` (`SENTINEL_MIN_RELEASE_AGE_DAYS`): UI5 patches and npm
   packages are only recommended and moved to once they have been published
   that many days. UI5 patches are dated from the SAP CDN, and npm gets

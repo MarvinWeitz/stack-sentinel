@@ -125,8 +125,8 @@ const MARKER = 'stack-sentinel-fix';
 export const marker = (group) => `<!-- ${MARKER}: ${group.signature} -->`;
 export const readMarker = (body) => new RegExp(`<!-- ${MARKER}: (.*?) -->`).exec(body ?? '')?.[1] ?? null;
 
-/** Pull request description: what changes where, and why. */
-export function pullRequestBody(group, applied, report, notes = []) {
+/** Pull request description: what changes where, and why; `releaseNotes` are lines from notes.js. */
+export function pullRequestBody(group, applied, report, notes = [], releaseNotes = []) {
   const rows = applied.map(({ file, finding }) => {
     const version = finding.fix.from ?? finding.version;
     const from = version ? `\`${version}\`` : 'not set';
@@ -150,6 +150,7 @@ export function pullRequestBody(group, applied, report, notes = []) {
     ...(why.length ? ['', ...why.map((w) => `${w}.`)] : []),
     ...after,
     ...notes.flatMap((n) => ['', n]),
+    ...releaseNotes,
     '',
     '---',
     `Opened by [stack-sentinel](https://github.com/cbs-consulting/stack-sentinel) ${report.toolVersion}${report.links?.run ? ` in [this run](${report.links.run})` : ''}. `

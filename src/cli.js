@@ -57,6 +57,18 @@ export const makePostJson = (timeoutSeconds) => async (url, body) => {
   return res.json();
 };
 
+/**
+ * Reads JSON for the release notes in fix pull requests. Requests to GitHub's API carry the
+ * pipeline's GitHub token, if there is one for github.com, so the rate limit is the token's
+ * rather than that of a runner's shared address.
+ */
+export const makeNotesFetch = (timeoutSeconds, githubToken) => async (url) => {
+  const auth = githubToken && url.startsWith('https://api.github.com/') ? { authorization: `Bearer ${githubToken}` } : {};
+  const res = await fetch(url, { headers: { accept: 'application/json', ...auth }, signal: AbortSignal.timeout(timeoutSeconds * 1000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
+  return res.json();
+};
+
 async function loadConfig(root, explicit) {
   const file = explicit ? resolve(explicit) : join(root, DEFAULT_CONFIG_FILE);
   try {
@@ -224,7 +236,10 @@ export async function main(argv, env = process.env) {
       const provider = detectProvider(env, { token: settings.fix.token, timeoutSeconds: settings.timeoutSeconds });
       report.pullRequests = await openPullRequests(report, root, {
         provider, fixOn: settings.fix.on, only: settings.fix.groups, branchPrefix: settings.fix.branchPrefix, maxPullRequests: settings.fix.maxPullRequests,
-        autoMerge: settings.fix.autoMerge, before, log: (line) => console.error(`stack-sentinel: ${line}`),
+        autoMerge: settings.fix.autoMerge, before, registry: settings.audit.registry,
+        fetchJson: makeNotesFetch(settings.timeoutSeconds, provider.platform === 'github' && /^https:\/\/github\.com\/?$/.test(env.GITHUB_SERVER_URL ?? 'https://github.com')
+          ? settings.fix.token ?? env.GITHUB_TOKEN : undefined),
+        log: (line) => console.error(`stack-sentinel: ${line}`),
       });
       const failed = report.pullRequests.filter((pr) => pr.action === 'failed');
       if (failed.length) throw new Error(failed.map((pr) => `${pr.title}: ${pr.reason}`).join(' '));

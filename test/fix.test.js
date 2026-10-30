@@ -169,6 +169,7 @@ test('opens one pull request per group, and the next run updates it instead of o
   assert.deepEqual(second.map((r) => r.action), ['unchanged']);
   assert.equal(provider.prs.length, 1);
   assert.match(provider.prs[0].body, /https:\/\/run\/2/); // the description follows the latest run
+  assert.match(provider.prs[0].body, /### Release notes\n\n- \[SAPUI5 1\.148\.12 change log\]\(https:\/\/ui5\.sap\.com\/1\.148\.12\/#\/releasenotes\.html\)/);
 });
 
 test('a pull request closed without merging is not opened again for the same versions', async () => {
