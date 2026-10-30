@@ -57,8 +57,11 @@ export function planFixes(findings, { fixOn = 'info', only = GROUPS.filter((g) =
   return groups;
 }
 
-/** Title, and a signature of what the group moves to: a closed pull request with the same signature was declined. */
-function describe(id, changes) {
+/**
+ * Title, and a signature of what the group moves to: a closed pull request with the same signature was declined.
+ * The signature comes from the findings; the title is made again once npm has said which versions it moved to.
+ */
+export function describe(id, changes) {
   if (id === 'ui5') {
     const targets = [...new Set(changes.map((c) => c.finding.fix.to))].sort();
     const lines = [...new Set(targets.map((t) => t.split('.').slice(0, 2).join('.')))];

@@ -5,13 +5,13 @@ import { azureProvider } from './azure.js';
 import { githubProvider } from './github.js';
 import { releaseNotes } from './notes.js';
 import { refreshLockfiles } from './npm.js';
-import { GROUPS, applyGroup, onlyPatches, planFixes, pullRequestBody, readMarker } from './plan.js';
+import { GROUPS, applyGroup, describe, onlyPatches, planFixes, pullRequestBody, readMarker } from './plan.js';
 
 /** Changes the files in the scanned folder itself. Returns [{ group, files, skipped }]. */
 export async function applyFixes(report, root, { fixOn, only, runNpm, before }) {
   const results = [];
   const read = (file) => readFile(join(root, file), 'utf8').catch(() => null);
-  for (const group of planFixes(report.findings, { fixOn, only })) {
+  for (let group of planFixes(report.findings, { fixOn, only })) {
     let { files, applied, skipped } = await applyGroup(group, read);
     const notes = skipped.map((s) => `${s.change.file}: ${s.reason}`);
     if (group.lockfile && applied.length) {
@@ -19,6 +19,8 @@ export async function applyFixes(report, root, { fixOn, only, runNpm, before }) 
       files = refreshed.files;
       notes.push(...refreshed.skipped.map((s) => `${s.file}: ${s.reason}`),
         ...refreshed.unfixed.filter((c) => c.finding.fix.kind === 'npm-audit').map((c) => `${c.file}: npm did not move ${c.finding.fix.name} to ${c.finding.fix.to}${heldBack(before)}`));
+      const moved = applied.filter((c) => !refreshed.unfixed.includes(c));
+      if (moved.length) group = { ...group, title: describe(group.id, moved).title };
     }
     for (const [file, text] of files) await writeFile(join(root, file), text);
     results.push({ group: group.id, title: group.title, files: [...files.keys()], skipped: notes });
@@ -85,6 +87,8 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
       notes.push(`Not changed: ${c.finding.fix.name} in \`${c.file}\`, because npm did not move it to ${c.finding.fix.to}${heldBack(before)}: see the finding for what stands in the way.`);
     }
     applied = applied.filter((c) => !refreshed.unfixed.includes(c));
+    // the advisory names the lowest fixed version; the title names the one npm moved to
+    if (applied.length) group = { ...group, title: describe(group.id, applied).title };
   }
   if (files.size === 0) return { action: 'skipped', more: { reason: 'none of the changes apply to the default branch' } };
   try {
@@ -126,7 +130,7 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
       await provider.updatePullRequest(pr, { title: group.title, body: pullRequestBody(group, applied, report, notes, changes) });
     }
   }
-  return { action, created: !open, more };
+  return { action, created: !open, title: group.title, more };
 }
 
 /**
@@ -176,7 +180,7 @@ export async function openPullRequests(report, root, {
     try {
       const done = await writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge, runNpm, before, fetchJson, registry });
       if (done.created) openCount++;
-      result(done.action, done.more);
+      result(done.action, { title: done.title ?? group.title, ...done.more });
     } catch (err) {
       result('failed', { reason: err.message });
     }

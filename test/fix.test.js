@@ -567,6 +567,9 @@ test('npm audit: one pull request with the raised range and the lockfile npm wro
   const [result] = await openPullRequests(report, root, { ...opts(provider), only: ['npm-audit'], runNpm });
   await rm(root, { recursive: true });
   assert.equal(result.action, 'created');
+  // npm left minimist, so the title names lodash alone, at the version npm moved it to
+  assert.equal(result.title, 'Update lodash to 4.17.21');
+  assert.equal(provider.prs[0].title, 'Update lodash to 4.17.21');
   const written = new Map(JSON.parse(provider.branches.get('stack-sentinel/npm-audit')));
   assert.match(written.get('package.json'), /"lodash": "4\.17\.21"/);
   assert.equal(written.get('package-lock.json'), lock('4.17.21', '1.2.5'));
@@ -574,4 +577,23 @@ test('npm audit: one pull request with the raised range and the lockfile npm wro
   assert.match(body, /lodash 4\.17\.20 is vulnerable/);
   assert.doesNotMatch(body, /\| minimist/);
   assert.match(body, /Not changed: minimist in `package-lock\.json`, because npm did not move it to 1\.2\.6/);
+});
+
+test('npm audit: the title names the version npm moved to, not the advisory\'s lowest fixed one', async () => {
+  const finding = {
+    check: 'npm-audit', severity: 'error', file: 'package-lock.json', version: '4.17.20', message: 'lodash 4.17.20 is vulnerable.',
+    fix: { kind: 'npm-audit', name: 'lodash', to: '4.17.24' },
+  };
+  const lock = (lodash) => `${JSON.stringify({ lockfileVersion: 3, packages: { '': {}, 'node_modules/lodash': { version: lodash } } })}\n`;
+  const root = await mkdtemp(join(tmpdir(), 'sentinel-title-'));
+  await mkdir(join(root, '.git'));
+  const provider = fakeProvider({ 'package.json': '{\n  "dependencies": {\n    "lodash": "^4.17.20"\n  }\n}\n', 'package-lock.json': lock('4.17.20') });
+  // 4.17.24 was never published; npm takes the next release
+  const runNpm = async (args, cwd) => { if (args[0] === 'audit') await writeFile(join(cwd, 'package-lock.json'), lock('4.18.0')); };
+  const report = { project: 'p', toolVersion: '1', findings: [finding], checks: { run: ['npm-audit'] } };
+  const [result] = await openPullRequests(report, root, { ...opts(provider), only: ['npm-audit'], runNpm });
+  await rm(root, { recursive: true });
+  assert.equal(result.title, 'Update lodash to 4.18.0');
+  assert.equal(provider.prs[0].title, 'Update lodash to 4.18.0');
+  assert.match(provider.prs[0].body, /stack-sentinel-fix: npm-audit package-lock\.json:lodash@4\.17\.24/); // what was declined stays tied to the findings
 });

@@ -10,6 +10,9 @@ release notes.
 
 ## Unreleased
 
+- The title of an `npm-audit` fix pull request names the versions npm moved
+  to, not the lowest fixed versions the advisories name, which npm may
+  never have published (lodash 4.17.24, where npm moves to 4.18.0).
 - Fix pull requests carry release notes: the SAPUI5, Node.js and CAP change
   logs, and for vulnerable npm packages the advisories they fix and the
   GitHub release notes between the old and the new version.
