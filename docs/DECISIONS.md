@@ -635,6 +635,22 @@ any advisory is named would hide the others; so the check leaves out the
 named advisories and judges the package by the rest, and only a package with
 none left is set aside.
 
+**Release age is one setting for everything, off by default.** Renovate's
+`minimumReleaseAge` and Dependabot's cooldown are the models: a release that
+turns out broken or malicious is usually withdrawn within days, and
+auto-merge would otherwise take it within hours. It is a top-level setting,
+not a fix setting, because the UI5 check's recommendations follow it too, so
+the finding and the pull request name the same patch. SAP's version feed has
+no dates; the build timestamp in each patch's `sap-ui-version.json` on the
+CDN is the closest thing, read only when the setting is on, at most ten
+patches back per release line. OpenUI5's npm package has publish dates, but
+its patch numbers do not follow SAPUI5's. A CDN that cannot be reached
+makes the check fail, rather than recommend a patch whose age is unknown.
+For npm, `--before` lets npm do the choosing, so the age applies to every
+package npm moves, not only the one named. It applies to security fixes as
+well: that is the safer default for auto-merged pull requests, and `0`
+turns it off.
+
 ## Deliberately not built
 
 | Idea | Why not, or not yet |

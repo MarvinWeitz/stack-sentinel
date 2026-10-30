@@ -106,6 +106,7 @@ its value and where it came from.
 | `scan.exclude` | `--exclude` | `SENTINEL_SCAN_EXCLUDE` | `node_modules,.git,dist,build,gen,coverage,.cache` | Folder names that are not scanned (replaces the default list) |
 | `scan.maxDepth` | `--max-depth` | `SENTINEL_SCAN_MAX_DEPTH` | `8` | How many folder levels deep to scan |
 | `notify.maxFindings` |  | `SENTINEL_NOTIFY_MAX_FINDINGS` | `25` | Most findings listed in one Teams card |
+| `minReleaseAgeDays` |  | `SENTINEL_MIN_RELEASE_AGE_DAYS` | `0` | Recommend and move to UI5 patches and npm packages only once they were published this many days ago; 0 turns it off (see [Fix pull requests](#fix-pull-requests)) |
 | `fix.mode` | `--fix` | `SENTINEL_FIX_MODE` | `off` | Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (see [Fix pull requests](#fix-pull-requests)): `off`, `apply`, `pr` |
 | `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,node,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), node (Node.js versions), npm-overrides (npm overrides no longer needed); and, off by default, cap (CAP major upgrades, as draft pull requests) and npm-audit (vulnerable npm packages; runs npm) |
 | `fix.on` | `--fix-on` | `SENTINEL_FIX_ON` | `info` | Fix findings at or above this severity: `ok`, `info`, `warn`, `error` |
@@ -117,6 +118,7 @@ its value and where it came from.
 | `ui5.requireLts` |  | `SENTINEL_UI5_REQUIRE_LTS` | `true` | Warn about versions that are not long-term maintenance |
 | `ui5.warnDays` |  | `SENTINEL_UI5_WARN_DAYS` | `180` | Warn this many days before an end date |
 | `ui5.maintenanceDate` |  | `SENTINEL_UI5_MAINTENANCE_DATE` | `eomm` | End-of-maintenance date to use: eomm is the SAP BTP date shown on the version overview page, eom the feed's second date: `eomm`, `eom`, `earliest` |
+| `ui5.versionInfoUrl` |  | `SENTINEL_UI5_VERSION_INFO_URL` | `https://ui5.sap.com/{version}/resources/sap-ui-version.json` | Where the build date of a UI5 patch is read, for minReleaseAgeDays (`{version}` is replaced) |
 | `ui5.cdnHosts` |  | `SENTINEL_UI5_CDN_HOSTS` | `ui5.sap.com,sapui5.hana.ondemand.com,openui5.hana.ondemand.com,sdk.openui5.org` | Hosts recognised in bootstrap URLs (replaces the default list) |
 | `ui5.yamlPattern` |  | `SENTINEL_UI5_YAML_PATTERN` | `(^\|/)ui5([-.][\w.-]+)?\.ya?ml$` | Files read as UI5 tooling config (regex on the relative path) |
 | `ui5.htmlPattern` |  | `SENTINEL_UI5_HTML_PATTERN` | `\.html?$` | Files searched for a bootstrap URL (regex on the relative path) |
@@ -366,6 +368,17 @@ Cloud Foundry, which would be a guess.
   by itself once its branch policies pass. If it cannot be turned on, the
   pull request stays open and the output says why. Draft pull requests
   (`cap`) are never set to merge.
+- **Wait before moving to a new release** with `minReleaseAgeDays`, like
+  Renovate's `minimumReleaseAge`: `SENTINEL_MIN_RELEASE_AGE_DAYS=3` moves
+  only to releases that have been out for three days, so a broken or
+  hijacked release is usually withdrawn before a pull request picks it up.
+  This matters most with auto-merge. A UI5 patch counts from the build date
+  on the SAP CDN (`sap-ui-version.json`), and until it is old enough the
+  findings recommend the patch before it. For `cap` and `npm-audit`, npm gets
+  `--before`, so it picks only releases published before then; a
+  vulnerability whose only fix is newer stays open, and the pull request
+  says so. Node.js fixes name a major version, not a release, and are not
+  held back. It is off (`0`) by default, and applies to security fixes too.
 - **At most `fix.maxPullRequests`** (default 5) are open at a time.
 - **Moving to a new release line** (UI5 1.120 to 1.148, Node.js 20 to 24) is a normal pull
   request too. The project's own checks on the pull request are what show

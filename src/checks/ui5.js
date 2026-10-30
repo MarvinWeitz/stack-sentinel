@@ -61,6 +61,40 @@ export function indexFeed(feed) {
   return { minors, patches, latestPatch, fallback };
 }
 
+/** "202610191230" (sap-ui-version.json's buildTimestamp, UTC) or an ISO date -> Date, or null. */
+export function parseBuildTimestamp(text) {
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})?(\d{2})?/.exec(String(text ?? ''));
+  if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4] ?? 0), Number(m[5] ?? 0)));
+  const d = new Date(text);
+  return text && !Number.isNaN(d.getTime()) ? d : null;
+}
+
+/**
+ * For minReleaseAgeDays: the newest patch of each of `lines` ("1.148") becomes the newest one
+ * built before `cutoff`, so a patch is only recommended once it has been out a while. The feed
+ * has no dates; `dateOf(version)` reads one (null when unknown, and such a patch is passed
+ * over). Looks at most `tries` patches back per line; a line with none old enough has no
+ * newest patch then.
+ */
+export async function holdBackPatches(index, lines, { cutoff, dateOf, tries = 10 }) {
+  for (const line of lines) {
+    const newest = index.latestPatch.get(line);
+    if (newest === undefined) continue;
+    index.latestPatch.delete(line);
+    let left = tries;
+    for (let patch = newest; patch >= 0 && left > 0; patch--) {
+      const entry = index.patches.get(`${line}.${patch}`);
+      if (!entry || entry.removed) continue;
+      left--;
+      const built = await dateOf(`${line}.${patch}`);
+      if (built && built <= cutoff) {
+        index.latestPatch.set(line, patch);
+        break;
+      }
+    }
+  }
+}
+
 // ---------- evaluation ----------
 
 
@@ -413,6 +447,18 @@ export const ui5Check = {
     const opts = { now: ctx.now, requireLts: cfg.requireLts, warnDays: cfg.warnDays, maintenanceDate: cfg.maintenanceDate };
     // Notes are about apps that run on "latest" because nothing is pinned: carry what to pin.
     const rec = recommend(index, opts);
+    if (ctx.config.minReleaseAgeDays > 0) {
+      const lines = new Set([rec?.key, ...usages.map((u) => parseVersion(u.version)).filter(Boolean).map((v) => `${v.major}.${v.minor}`)].filter(Boolean));
+      const dateOf = async (version) => {
+        try {
+          return parseBuildTimestamp((await ctx.fetchJson(cfg.versionInfoUrl.replace('{version}', version)))?.buildTimestamp);
+        } catch (err) {
+          if (/\bHTTP 404\b/.test(err.message)) return null; // not on the CDN
+          throw new Error(`could not read when UI5 ${version} was built: ${err.message}`);
+        }
+      };
+      await holdBackPatches(index, lines, { cutoff: new Date(ctx.now.getTime() - ctx.config.minReleaseAgeDays * DAY), dateOf });
+    }
     if (rec) {
       for (const note of notes) {
         if (note.local) continue;

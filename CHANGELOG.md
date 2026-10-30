@@ -10,6 +10,10 @@ release notes.
 
 ## Unreleased
 
+- `minReleaseAgeDays` (`SENTINEL_MIN_RELEASE_AGE_DAYS`): UI5 patches and npm
+  packages are only recommended and moved to once they have been published
+  that many days. UI5 patches are dated from the SAP CDN, and npm gets
+  `--before`. Off by default.
 - Ignore rules: findings listed under `"ignore"` in the config file, by
   check, file, package, version, advisory or message, are left out of
   notifications, the exit code and fix pull requests until the rule's

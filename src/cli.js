@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { checks, selectChecks } from './checks/index.js';
+import { DAY } from './feed.js';
 import { listFiles } from './files.js';
 import { advisoryFilter, applyIgnores, parseIgnoreRules } from './ignore.js';
 import { applyFixes, detectProvider, openPullRequests } from './fix/index.js';
@@ -216,13 +217,14 @@ export async function main(argv, env = process.env) {
   // Fixes come before the report goes out, so the card can link the pull requests. A fix
   // that fails is a tool failure, but the report is still delivered first.
   let fixError;
+  const before = settings.minReleaseAgeDays > 0 ? new Date(Date.parse(report.generatedAt) - settings.minReleaseAgeDays * DAY) : undefined;
   try {
-    if (settings.fix.mode === 'apply') report.fixes = await applyFixes(report, root, { fixOn: settings.fix.on, only: settings.fix.groups });
+    if (settings.fix.mode === 'apply') report.fixes = await applyFixes(report, root, { fixOn: settings.fix.on, only: settings.fix.groups, before });
     if (settings.fix.mode === 'pr') {
       const provider = detectProvider(env, { token: settings.fix.token, timeoutSeconds: settings.timeoutSeconds });
       report.pullRequests = await openPullRequests(report, root, {
         provider, fixOn: settings.fix.on, only: settings.fix.groups, branchPrefix: settings.fix.branchPrefix, maxPullRequests: settings.fix.maxPullRequests,
-        autoMerge: settings.fix.autoMerge, log: (line) => console.error(`stack-sentinel: ${line}`),
+        autoMerge: settings.fix.autoMerge, before, log: (line) => console.error(`stack-sentinel: ${line}`),
       });
       const failed = report.pullRequests.filter((pr) => pr.action === 'failed');
       if (failed.length) throw new Error(failed.map((pr) => `${pr.title}: ${pr.reason}`).join(' '));
