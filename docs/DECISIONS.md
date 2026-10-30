@@ -20,6 +20,7 @@ Status as of 2026-10-11. Everything here was decided on that day unless noted.
 - [Check: cap-version](#check-cap-version)
 - [Check: npm-audit](#check-npm-audit)
 - [Fix pull requests](#fix-pull-requests)
+- [Ignore rules, release age and release notes](#ignore-rules-release-age-and-release-notes)
 - [Deliberately not built](#deliberately-not-built)
 - [Unverified and open](#unverified-and-open)
 
@@ -611,6 +612,57 @@ a pin or moving to another line is not a patch.
 
 **Major version moves are normal pull requests.** Moving to a new UI5 release
 line is opened like a patch; the project's own checks decide.
+
+## Ignore rules, release age and release notes
+
+Decided 2026-10-30, after comparing the tool with Dependabot, Renovate, Snyk,
+Socket and OSV-Scanner. These three were picked from a longer list because
+they are small and make fix pull requests safer to merge by themselves.
+
+**Ignore rules live in the config file and end on a date.** Snyk's `.snyk`
+file and Dependabot's `ignore` are the models. A finding the team accepts
+would otherwise come back on every run, and the only way out was a lower
+threshold or skipping the whole check. In the repository, the decision is
+reviewed like any change; `until` brings it back for review instead of
+hiding it for good. An expired rule and one that matches nothing are
+reported as info, so the list does not rot. A rule must name more than a
+check, because hiding all of a check's findings, including future ones, is
+what `skipChecks` is for and should look like that.
+
+**Advisories are ignored one at a time.** npm-audit makes one finding per
+package, but a package can have several advisories. Ignoring the finding when
+any advisory is named would hide the others; so the check leaves out the
+named advisories and judges the package by the rest, and only a package with
+none left is set aside.
+
+**Release age is one setting for everything, off by default.** Renovate's
+`minimumReleaseAge` and Dependabot's cooldown are the models: a release that
+turns out broken or malicious is usually withdrawn within days, and
+auto-merge would otherwise take it within hours. It is a top-level setting,
+not a fix setting, because the UI5 check's recommendations follow it too, so
+the finding and the pull request name the same patch. SAP's version feed has
+no dates; the build timestamp in each patch's `sap-ui-version.json` on the
+CDN is the closest thing, read only when the setting is on, at most ten
+patches back per release line. OpenUI5's npm package has publish dates, but
+its patch numbers do not follow SAPUI5's. A CDN that cannot be reached
+makes the check fail, rather than recommend a patch whose age is unknown.
+For npm, `--before` lets npm do the choosing, so the age applies to every
+package npm moves, not only the one named. It applies to security fixes as
+well: that is the safer default for auto-merged pull requests, and `0`
+turns it off.
+
+**Release notes come from where each project publishes them.** Renovate and
+Dependabot put release notes in their pull requests, which is what makes a
+pull request reviewable without leaving it. UI5, Node.js and CAP publish
+change logs at fixed addresses, so those are links. npm packages have no
+common place; GitHub releases are the most common, found through the
+`repository` field of the package's latest version. Their text is someone
+else's: mentions and issue references are broken, and GitHub links go
+through `redirect.github.com`, as Dependabot does, so a fix pull request does
+not notify strangers or appear in their issues. Reading them is best effort;
+a failure becomes a link and never stops the pull request. Azure DevOps gets
+links only, because its 4000-character description limit would cut the
+table.
 
 ## Deliberately not built
 

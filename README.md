@@ -106,6 +106,7 @@ its value and where it came from.
 | `scan.exclude` | `--exclude` | `SENTINEL_SCAN_EXCLUDE` | `node_modules,.git,dist,build,gen,coverage,.cache` | Folder names that are not scanned (replaces the default list) |
 | `scan.maxDepth` | `--max-depth` | `SENTINEL_SCAN_MAX_DEPTH` | `8` | How many folder levels deep to scan |
 | `notify.maxFindings` |  | `SENTINEL_NOTIFY_MAX_FINDINGS` | `25` | Most findings listed in one Teams card |
+| `minReleaseAgeDays` |  | `SENTINEL_MIN_RELEASE_AGE_DAYS` | `0` | Recommend and move to UI5 patches and npm packages only once they were published this many days ago; 0 turns it off (see [Fix pull requests](#fix-pull-requests)) |
 | `fix.mode` | `--fix` | `SENTINEL_FIX_MODE` | `off` | Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (see [Fix pull requests](#fix-pull-requests)): `off`, `apply`, `pr` |
 | `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,node,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), node (Node.js versions), npm-overrides (npm overrides no longer needed); and, off by default, cap (CAP major upgrades, as draft pull requests) and npm-audit (vulnerable npm packages; runs npm) |
 | `fix.on` | `--fix-on` | `SENTINEL_FIX_ON` | `info` | Fix findings at or above this severity: `ok`, `info`, `warn`, `error` |
@@ -117,6 +118,7 @@ its value and where it came from.
 | `ui5.requireLts` |  | `SENTINEL_UI5_REQUIRE_LTS` | `true` | Warn about versions that are not long-term maintenance |
 | `ui5.warnDays` |  | `SENTINEL_UI5_WARN_DAYS` | `180` | Warn this many days before an end date |
 | `ui5.maintenanceDate` |  | `SENTINEL_UI5_MAINTENANCE_DATE` | `eomm` | End-of-maintenance date to use: eomm is the SAP BTP date shown on the version overview page, eom the feed's second date: `eomm`, `eom`, `earliest` |
+| `ui5.versionInfoUrl` |  | `SENTINEL_UI5_VERSION_INFO_URL` | `https://ui5.sap.com/{version}/resources/sap-ui-version.json` | Where the build date of a UI5 patch is read, for minReleaseAgeDays (`{version}` is replaced) |
 | `ui5.cdnHosts` |  | `SENTINEL_UI5_CDN_HOSTS` | `ui5.sap.com,sapui5.hana.ondemand.com,openui5.hana.ondemand.com,sdk.openui5.org` | Hosts recognised in bootstrap URLs (replaces the default list) |
 | `ui5.yamlPattern` |  | `SENTINEL_UI5_YAML_PATTERN` | `(^\|/)ui5([-.][\w.-]+)?\.ya?ml$` | Files read as UI5 tooling config (regex on the relative path) |
 | `ui5.htmlPattern` |  | `SENTINEL_UI5_HTML_PATTERN` | `\.html?$` | Files searched for a bootstrap URL (regex on the relative path) |
@@ -177,6 +179,51 @@ Notes on the UI5 settings:
 - `ui5.probes` (config file only) is a list of `{ "name", "url" }` for systems
   that host their own UI5 library. Each URL must return JSON with a top-level
   `version` field. Apps on SAP BTP do not need one.
+
+<a id="ignore"></a>
+
+## 🙈 Ignoring findings
+
+A finding the team has looked at and decided to live with, for now, can be
+ignored in the config file. Each rule names what it matches, and ends on a
+date, so the decision comes back for review instead of being forgotten:
+
+```json
+{
+  "ignore": [
+    { "advisory": "GHSA-29mw-wpgm-hmr9", "until": "2027-01-31", "reason": "lodash is only used by a build script" },
+    { "check": "ui5-version", "file": "^legacy/", "until": "2026-12-31", "reason": "The legacy app is retired in December" },
+    { "check": "cap-version", "package": "@sap/cds", "version": "8.9.4" }
+  ]
+}
+```
+
+| Field | Matches |
+| --- | --- |
+| `check` | The check id (see [Checks](#checks)) |
+| `file` | The finding's file (regex on the relative path) |
+| `package` | An npm package (`npm-audit`, `cap-version`) |
+| `version` | The version the finding is about, exactly |
+| `advisory` | A vulnerability, by GitHub advisory id (`GHSA-...`) or npm advisory number |
+| `message` | The finding's text (regex) |
+| `until` | Last day the rule applies (`YYYY-MM-DD`); without it, the rule never ends |
+| `reason` | Why, shown with the ignored finding |
+
+- **Every field a rule gives must match**, and it must give at least one of
+  `file`, `package`, `version`, `advisory` or `message`. To stop a whole
+  check, use `skipChecks` instead.
+- **An ignored advisory is left out on its own.** A package with other
+  advisories is still reported, with the severity of the ones that are left.
+- **Ignored findings are not notified, do not fail the run and are not
+  fixed.** The report lists them under `ignored`, with the reason and date,
+  and the Teams card says how many there are.
+- **A rule past its date stops applying**, and the report says so (info), so
+  the finding is back and the rule can be removed or given a new date.
+- **A rule that matches nothing is reported too** (info), once every check it
+  could match has run cleanly.
+- A rule that cannot be read stops the run with exit code `2`.
+- `ignore` can also be set in a [shared config](#shared-config). As with
+  other lists, a project's own `ignore` list replaces it.
 
 <a id="shared-config"></a>
 
@@ -321,6 +368,28 @@ Cloud Foundry, which would be a guess.
   by itself once its branch policies pass. If it cannot be turned on, the
   pull request stays open and the output says why. Draft pull requests
   (`cap`) are never set to merge.
+- **Release notes** are part of each pull request: links to the SAPUI5
+  change log of the new version, the Node.js change log of the new major and
+  the CAP release notes. For `npm-audit`, each package lists the advisories
+  it fixes and, when its repository is on GitHub, the release notes published
+  there between the old and the new version (the newest five, folded). Text
+  from those releases cannot notify anyone or link issues: mentions and
+  `#123` references are broken, and GitHub links go through
+  `redirect.github.com`. On GitHub Actions the requests use the pipeline's
+  token, against the API's rate limit for anonymous use. On Azure DevOps,
+  whose descriptions hold 4000 characters, there are links only. Release
+  notes that cannot be read become a link; they never stop a pull request.
+- **Wait before moving to a new release** with `minReleaseAgeDays`, like
+  Renovate's `minimumReleaseAge`: `SENTINEL_MIN_RELEASE_AGE_DAYS=3` moves
+  only to releases that have been out for three days, so a broken or
+  hijacked release is usually withdrawn before a pull request picks it up.
+  This matters most with auto-merge. A UI5 patch counts from the build date
+  on the SAP CDN (`sap-ui-version.json`), and until it is old enough the
+  findings recommend the patch before it. For `cap` and `npm-audit`, npm gets
+  `--before`, so it picks only releases published before then; a
+  vulnerability whose only fix is newer stays open, and the pull request
+  says so. Node.js fixes name a major version, not a release, and are not
+  held back. It is off (`0`) by default, and applies to security fixes too.
 - **At most `fix.maxPullRequests`** (default 5) are open at a time.
 - **Moving to a new release line** (UI5 1.120 to 1.148, Node.js 20 to 24) is a normal pull
   request too. The project's own checks on the pull request are what show

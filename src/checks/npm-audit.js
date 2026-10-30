@@ -139,7 +139,8 @@ export function bulkRequest(packages) {
 
 /**
  * Turns the registry's answer into one finding per vulnerable installed package.
- * cfg: { reportFrom, warnAt, errorAt } as advisory severities. graph (from dependencyGraph)
+ * cfg: { reportFrom, warnAt, errorAt } as advisory severities, and optionally ignoreAdvisory
+ * (see advisoryFilter in src/ignore.js). graph (from dependencyGraph)
  * is optional; with it, findings say which direct dependencies bring a package in, and the
  * action takes the version ranges along the way into account.
  */
@@ -155,11 +156,17 @@ export function evaluate(lockfile, packages, advisories, cfg, graph) {
   for (const pkg of unique.values()) {
     const version = parts(pkg.version);
     if (!version) continue;
-    const hits = (advisories[pkg.name] ?? []).filter((a) => {
+    const all = (advisories[pkg.name] ?? []).filter((a) => {
       const range = parseRange(a.vulnerable_versions ?? '');
       return range ? satisfies(range, version) : false;
     });
-    if (hits.length === 0) continue;
+    if (all.length === 0) continue;
+    // advisories an ignore rule names are left out, and the package is judged by the rest;
+    // when none is left, the finding is still made, marked, and src/ignore.js sets it aside
+    const ignoring = all.map((a) => cfg.ignoreAdvisory?.(pkg, a, lockfile));
+    const remaining = all.filter((a, i) => !ignoring[i]);
+    const hits = remaining.length ? remaining : all;
+    const left = all.map((a, i) => ignoring[i] && { id: a.id, url: a.url, rule: ignoring[i].index }).filter(Boolean);
     const worst = hits.reduce((a, b) => (level(b.severity) > level(a.severity) ? b : a));
     if (level(worst.severity) < level(cfg.reportFrom)) continue;
 
@@ -187,7 +194,9 @@ export function evaluate(lockfile, packages, advisories, cfg, graph) {
         severity: worst.severity,
         advisories: hits.map((a) => ({ id: a.id, title: a.title, severity: a.severity, url: a.url, vulnerableVersions: a.vulnerable_versions })),
         ...(origin ? { introducedBy: origin.introducedBy } : {}),
+        ...(remaining.length && left.length ? { ignoredAdvisories: left } : {}),
       },
+      ...(remaining.length ? {} : { ignoredByRules: [...new Set(left.map((a) => a.rule))] }),
     });
   }
   return findings;
@@ -445,7 +454,7 @@ export const npmAuditCheck = {
         manifest = JSON.parse(await readFile(join(ctx.root, posix.dirname(lockfile), 'package.json'), 'utf8'));
       } catch { /* none, or unreadable: nothing to say about overrides */ }
       const graph = dependencyGraph(lock, manifest);
-      const found = evaluate(lockfile, packages, advisories, cfg, graph);
+      const found = evaluate(lockfile, packages, advisories, { ...cfg, ignoreAdvisory: ctx.ignoreAdvisory }, graph);
       if (found.length === 0) {
         const unique = new Set(packages.map((p) => `${p.name}@${p.version}`)).size;
         const scope = cfg.reportFrom === 'info' ? 'No known vulnerabilities' : `No known vulnerabilities of ${cfg.reportFrom} severity or above`;

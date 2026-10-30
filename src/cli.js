@@ -2,7 +2,9 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { checks, selectChecks } from './checks/index.js';
+import { DAY } from './feed.js';
 import { listFiles } from './files.js';
+import { advisoryFilter, applyIgnores, parseIgnoreRules } from './ignore.js';
 import { applyFixes, detectProvider, openPullRequests } from './fix/index.js';
 import { notify, sendHeartbeat } from './notifiers/webhook.js';
 import { detectPipeline } from './pipeline.js';
@@ -55,6 +57,18 @@ export const makePostJson = (timeoutSeconds) => async (url, body) => {
   return res.json();
 };
 
+/**
+ * Reads JSON for the release notes in fix pull requests. Requests to GitHub's API carry the
+ * pipeline's GitHub token, if there is one for github.com, so the rate limit is the token's
+ * rather than that of a runner's shared address.
+ */
+export const makeNotesFetch = (timeoutSeconds, githubToken) => async (url) => {
+  const auth = githubToken && url.startsWith('https://api.github.com/') ? { authorization: `Bearer ${githubToken}` } : {};
+  const res = await fetch(url, { headers: { accept: 'application/json', ...auth }, signal: AbortSignal.timeout(timeoutSeconds * 1000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
+  return res.json();
+};
+
 async function loadConfig(root, explicit) {
   const file = explicit ? resolve(explicit) : join(root, DEFAULT_CONFIG_FILE);
   try {
@@ -91,14 +105,15 @@ async function loadSharedConfig(location, baseDir, timeoutSeconds) {
  */
 export async function scan({ root, config = {}, settings = resolveSettings({ config }).values, now = new Date(), fetchJsonImpl, fetchTextImpl, postJsonImpl }) {
   const selection = selectChecks(settings);
+  const rules = parseIgnoreRules(settings.ignore, now);
   const files = await listFiles(root, settings.scan);
   const ctx = {
-    root, files, config: settings, now,
+    root, files, config: settings, now, ignoreAdvisory: advisoryFilter(rules.active),
     fetchJson: fetchJsonImpl ?? makeFetchJson(settings.timeoutSeconds),
     fetchText: fetchTextImpl ?? makeFetchText(settings.timeoutSeconds),
     postJson: postJsonImpl ?? makePostJson(settings.timeoutSeconds),
   };
-  const findings = [];
+  let findings = [];
   for (const check of selection.selected) {
     try {
       findings.push(...(await check.run(ctx)));
@@ -107,6 +122,10 @@ export async function scan({ root, config = {}, settings = resolveSettings({ con
       findings.push({ check: check.id, severity: 'error', source: 'check', message: `Check failed to run: ${err.message}` });
     }
   }
+  const run = selection.selected.map((c) => c.id);
+  const failed = new Set(findings.filter((f) => f.source === 'check').map((f) => f.check));
+  const { findings: kept, ignored, notes } = applyIgnores(findings, rules, { ran: run, failed });
+  findings = [...kept, ...notes];
   findings.sort((a, b) => rank(b.severity) - rank(a.severity));
   const summary = { error: 0, warn: 0, info: 0, ok: 0 };
   for (const f of findings) summary[f.severity]++;
@@ -116,9 +135,10 @@ export async function scan({ root, config = {}, settings = resolveSettings({ con
     project: settings.project ?? basename(root),
     generatedAt: now.toISOString(),
     status: worst(findings.map((f) => f.severity)),
-    checks: { run: selection.selected.map((c) => c.id), skipped: selection.skipped },
+    checks: { run, skipped: selection.skipped },
     summary,
     findings,
+    ...(ignored.length ? { ignored } : {}),
   };
 }
 
@@ -133,6 +153,11 @@ function printText(report) {
     if (g.action) console.log(`          → ${g.action}`);
   }
   for (const text of recommendations(report.findings)) console.log(`  ${text}.`);
+  for (const g of groupFindings(report.ignored ?? [])) {
+    const by = report.ignored.find((f) => f.message === g.message).ignoredBy;
+    console.log(`  ignored: ${g.message}${g.files.length ? `  (${describeFiles(g.files)})` : ''}`);
+    if (by.reason || by.until) console.log(`          ${[by.reason, by.until && `until ${by.until}`].filter(Boolean).join(', ')}`);
+  }
   for (const f of report.fixes ?? []) {
     console.log(`  fixed: ${f.title}${f.files.length ? ` (${describeFiles(f.files)})` : ' (nothing changed)'}`);
     for (const reason of f.skipped) console.log(`          not changed: ${reason}`);
@@ -204,13 +229,17 @@ export async function main(argv, env = process.env) {
   // Fixes come before the report goes out, so the card can link the pull requests. A fix
   // that fails is a tool failure, but the report is still delivered first.
   let fixError;
+  const before = settings.minReleaseAgeDays > 0 ? new Date(Date.parse(report.generatedAt) - settings.minReleaseAgeDays * DAY) : undefined;
   try {
-    if (settings.fix.mode === 'apply') report.fixes = await applyFixes(report, root, { fixOn: settings.fix.on, only: settings.fix.groups });
+    if (settings.fix.mode === 'apply') report.fixes = await applyFixes(report, root, { fixOn: settings.fix.on, only: settings.fix.groups, before });
     if (settings.fix.mode === 'pr') {
       const provider = detectProvider(env, { token: settings.fix.token, timeoutSeconds: settings.timeoutSeconds });
       report.pullRequests = await openPullRequests(report, root, {
         provider, fixOn: settings.fix.on, only: settings.fix.groups, branchPrefix: settings.fix.branchPrefix, maxPullRequests: settings.fix.maxPullRequests,
-        autoMerge: settings.fix.autoMerge, log: (line) => console.error(`stack-sentinel: ${line}`),
+        autoMerge: settings.fix.autoMerge, before, registry: settings.audit.registry,
+        fetchJson: makeNotesFetch(settings.timeoutSeconds, provider.platform === 'github' && /^https:\/\/github\.com\/?$/.test(env.GITHUB_SERVER_URL ?? 'https://github.com')
+          ? settings.fix.token ?? env.GITHUB_TOKEN : undefined),
+        log: (line) => console.error(`stack-sentinel: ${line}`),
       });
       const failed = report.pullRequests.filter((pr) => pr.action === 'failed');
       if (failed.length) throw new Error(failed.map((pr) => `${pr.title}: ${pr.reason}`).join(' '));

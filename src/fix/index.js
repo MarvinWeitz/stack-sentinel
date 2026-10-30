@@ -3,21 +3,24 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, sep } from 'node:path';
 import { azureProvider } from './azure.js';
 import { githubProvider } from './github.js';
+import { releaseNotes } from './notes.js';
 import { refreshLockfiles } from './npm.js';
-import { GROUPS, applyGroup, onlyPatches, planFixes, pullRequestBody, readMarker } from './plan.js';
+import { GROUPS, applyGroup, describe, onlyPatches, planFixes, pullRequestBody, readMarker } from './plan.js';
 
 /** Changes the files in the scanned folder itself. Returns [{ group, files, skipped }]. */
-export async function applyFixes(report, root, { fixOn, only, runNpm }) {
+export async function applyFixes(report, root, { fixOn, only, runNpm, before }) {
   const results = [];
   const read = (file) => readFile(join(root, file), 'utf8').catch(() => null);
-  for (const group of planFixes(report.findings, { fixOn, only })) {
+  for (let group of planFixes(report.findings, { fixOn, only })) {
     let { files, applied, skipped } = await applyGroup(group, read);
     const notes = skipped.map((s) => `${s.change.file}: ${s.reason}`);
     if (group.lockfile && applied.length) {
-      const refreshed = await refreshLockfiles({ ...group, changes: applied }, files, read, { run: runNpm });
+      const refreshed = await refreshLockfiles({ ...group, changes: applied }, files, read, { run: runNpm, before });
       files = refreshed.files;
       notes.push(...refreshed.skipped.map((s) => `${s.file}: ${s.reason}`),
-        ...refreshed.unfixed.filter((c) => c.finding.fix.kind === 'npm-audit').map((c) => `${c.file}: npm did not move ${c.finding.fix.name} to ${c.finding.fix.to}`));
+        ...refreshed.unfixed.filter((c) => c.finding.fix.kind === 'npm-audit').map((c) => `${c.file}: npm did not move ${c.finding.fix.name} to ${c.finding.fix.to}${heldBack(before)}`));
+      const moved = applied.filter((c) => !refreshed.unfixed.includes(c));
+      if (moved.length) group = { ...group, title: describe(group.id, moved).title };
     }
     for (const [file, text] of files) await writeFile(join(root, file), text);
     results.push({ group: group.id, title: group.title, files: [...files.keys()], skipped: notes });
@@ -57,12 +60,15 @@ export function detectProvider(env, { token, timeoutSeconds }) {
   throw new Error('Pull requests can be opened on GitHub Actions and Azure DevOps only. Use --fix apply (SENTINEL_FIX_MODE=apply) to change the files instead.');
 }
 
+/** Why npm may not have moved a package, when releases after `before` were left out. */
+const heldBack = (before) => (before ? ` (only releases published before ${before.toISOString().slice(0, 10)} were used: minReleaseAgeDays)` : '');
+
 const STALE = 'stack-sentinel no longer finds anything to change here, so this pull request is closed.';
 const WORKFLOWS = 'GitHub lets only a token with the "Workflows" permission change files in .github/workflows, and GITHUB_TOKEN cannot have it. '
   + 'To have them changed too, set SENTINEL_FIX_TOKEN to a token with "Contents", "Pull requests" and "Workflows" write access.';
 
 /** Commits one group's changes to its branch and opens or updates its pull request. */
-async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge = 'off', runNpm }) {
+async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge = 'off', runNpm, before, fetchJson, registry }) {
   // the edits are made to the default branch as it is now, not to the files the scan saw
   const read = (file) => provider.readFile(baseBranch, file);
   let { files, applied, skipped } = await applyGroup({ ...group, changes: group.changes.map((c) => ({ ...c, file: inRepo(c.file) })) }, read);
@@ -70,17 +76,19 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
   let written;
   const notes = [];
   if (group.lockfile && applied.length) {
-    const refreshed = await refreshLockfiles({ ...group, changes: applied }, files, read, { run: runNpm });
+    const refreshed = await refreshLockfiles({ ...group, changes: applied }, files, read, { run: runNpm, before });
     files = refreshed.files;
     for (const s of refreshed.skipped) {
       log(`not changed: ${s.file}: ${s.reason}`);
       notes.push(`Not changed: \`${s.file}\`, because ${s.reason}.`);
     }
     for (const c of refreshed.unfixed.filter((u) => u.finding.fix.kind === 'npm-audit')) {
-      log(`not changed: ${c.file}: npm did not move ${c.finding.fix.name} to ${c.finding.fix.to}`);
-      notes.push(`Not changed: ${c.finding.fix.name} in \`${c.file}\`, because npm did not move it to ${c.finding.fix.to}: see the finding for what stands in the way.`);
+      log(`not changed: ${c.file}: npm did not move ${c.finding.fix.name} to ${c.finding.fix.to}${heldBack(before)}`);
+      notes.push(`Not changed: ${c.finding.fix.name} in \`${c.file}\`, because npm did not move it to ${c.finding.fix.to}${heldBack(before)}: see the finding for what stands in the way.`);
     }
     applied = applied.filter((c) => !refreshed.unfixed.includes(c));
+    // the advisory names the lowest fixed version; the title names the one npm moved to
+    if (applied.length) group = { ...group, title: describe(group.id, applied).title };
   }
   if (files.size === 0) return { action: 'skipped', more: { reason: 'none of the changes apply to the default branch' } };
   try {
@@ -98,8 +106,10 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
     written = await provider.writeBranch(branch, baseBranch, files, group.title, { open: Boolean(open) });
   }
   const merge = autoMerge === 'all' || (autoMerge === 'patch' && onlyPatches(applied));
+  // Azure DevOps allows 4000 characters in a description: links only there
+  const changes = await releaseNotes(group, applied, { fetchJson, registry, withBodies: provider.platform !== 'azure-devops' });
   const body = pullRequestBody(group, applied, report,
-    merge ? [...notes, 'Auto-merge is on: this pull request is merged once its required checks pass (fix.autoMerge).'] : notes);
+    merge ? [...notes, 'Auto-merge is on: this pull request is merged once its required checks pass (fix.autoMerge).'] : notes, changes);
   let pr = open;
   let action = 'created';
   if (open) {
@@ -117,10 +127,10 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
     } catch (err) {
       more.autoMerge = false;
       log(`auto-merge not turned on for "${group.title}": ${err.message}`);
-      await provider.updatePullRequest(pr, { title: group.title, body: pullRequestBody(group, applied, report, notes) });
+      await provider.updatePullRequest(pr, { title: group.title, body: pullRequestBody(group, applied, report, notes, changes) });
     }
   }
-  return { action, created: !open, more };
+  return { action, created: !open, title: group.title, more };
 }
 
 /**
@@ -129,7 +139,9 @@ async function writeGroup(group, { provider, branch, baseBranch, open, inRepo, r
  * requests on those branches are the memory. Returns what happened to each group:
  * [{ group, title, action: 'created' | 'updated' | 'unchanged' | 'closed' | 'skipped', url?, reason? }].
  */
-export async function openPullRequests(report, root, { provider, fixOn, only, branchPrefix, maxPullRequests, autoMerge = 'off', log = () => {}, runNpm }) {
+export async function openPullRequests(report, root, {
+  provider, fixOn, only, branchPrefix, maxPullRequests, autoMerge = 'off', log = () => {}, runNpm, before, fetchJson, registry,
+}) {
   const prefix = relative(repositoryRoot(root), root).split(sep).filter(Boolean).join('/');
   const inRepo = (file) => (prefix ? `${prefix}/${file}` : file);
   const groups = planFixes(report.findings, { fixOn, only });
@@ -166,9 +178,9 @@ export async function openPullRequests(report, root, { provider, fixOn, only, br
     }
     // one group that fails does not stop the others; the run still ends as a tool failure
     try {
-      const done = await writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge, runNpm });
+      const done = await writeGroup(group, { provider, branch, baseBranch, open, inRepo, report, log, autoMerge, runNpm, before, fetchJson, registry });
       if (done.created) openCount++;
-      result(done.action, done.more);
+      result(done.action, { title: done.title ?? group.title, ...done.more });
     } catch (err) {
       result('failed', { reason: err.message });
     }

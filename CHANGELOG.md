@@ -10,6 +10,20 @@ release notes.
 
 ## Unreleased
 
+- The title of an `npm-audit` fix pull request names the versions npm moved
+  to, not the lowest fixed versions the advisories name, which npm may
+  never have published (lodash 4.17.24, where npm moves to 4.18.0).
+- Fix pull requests carry release notes: the SAPUI5, Node.js and CAP change
+  logs, and for vulnerable npm packages the advisories they fix and the
+  GitHub release notes between the old and the new version.
+- `minReleaseAgeDays` (`SENTINEL_MIN_RELEASE_AGE_DAYS`): UI5 patches and npm
+  packages are only recommended and moved to once they have been published
+  that many days. UI5 patches are dated from the SAP CDN, and npm gets
+  `--before`. Off by default.
+- Ignore rules: findings listed under `"ignore"` in the config file, by
+  check, file, package, version, advisory or message, are left out of
+  notifications, the exit code and fix pull requests until the rule's
+  `until` date. An expired rule, and one that matches nothing, is reported.
 - Two opt-in kinds of fix pull request that run npm to update
   `package-lock.json` (`--package-lock-only --ignore-scripts`, in a temporary
   folder): `cap` moves CAP packages on an old major to the current one, as a

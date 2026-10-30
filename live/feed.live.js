@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { indexPackage, registryLocation } from '../src/checks/cap.js';
 import { parseBuildpackManifest } from '../src/checks/cf-node.js';
 import { indexSchedule, recommendLine } from '../src/checks/node.js';
-import { indexFeed, normaliseStatus, parseQuarter } from '../src/checks/ui5.js';
+import { indexFeed, normaliseStatus, parseBuildTimestamp, parseQuarter } from '../src/checks/ui5.js';
 import { makeFetchJson, makeFetchText, makePostJson, scan } from '../src/cli.js';
 import { resolveSettings } from '../src/settings.js';
 
@@ -50,6 +50,15 @@ test('the index finds at least one long-term version in maintenance, with patche
     assert.ok(m.eomm || m.eom, `no end-of-maintenance date for ${key}`);
   }
   assert.ok(index.fallback, 'catch-all "*" entry');
+});
+
+test('the CDN says when a UI5 patch was built, for minReleaseAgeDays', async () => {
+  const index = indexFeed(feed);
+  const [key] = [...index.minors].find(([, m]) => m.lts && m.status === 'maintenance');
+  const version = `${key}.${index.latestPatch.get(key)}`;
+  const info = await makeFetchJson(settings.timeoutSeconds)(settings.ui5.versionInfoUrl.replace('{version}', version));
+  const built = parseBuildTimestamp(info.buildTimestamp);
+  assert.ok(built && built.getFullYear() >= 2020 && built <= new Date(), `buildTimestamp "${info.buildTimestamp}" on ${version}`);
 });
 
 test('the Node.js release schedule has the expected format', async () => {

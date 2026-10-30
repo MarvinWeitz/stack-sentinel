@@ -51,10 +51,10 @@ function versionsIn(lockText, name) {
  * the next release was 4.18.0), so a raised range is moved to the oldest release at or
  * above it that the registry has, keeping its style. Null when npm cannot tell.
  */
-async function published(run, spec, name, cwd, timeoutSeconds) {
+async function published(run, spec, name, cwd, timeoutSeconds, age) {
   const base = spec.replace(/^[\^~]/, '');
   try {
-    const out = JSON.parse(await run(['view', `${name}@>=${base}`, 'version', '--json'], cwd, timeoutSeconds) ?? 'null');
+    const out = JSON.parse(await run(['view', `${name}@>=${base}`, 'version', '--json', ...age], cwd, timeoutSeconds) ?? 'null');
     const first = Array.isArray(out) ? out[0] : out;
     return typeof first === 'string' ? spec.replace(base, first) : null;
   } catch {
@@ -97,9 +97,11 @@ const workspacesOf = (lockText) => Object.keys(JSON.parse(lockText).packages ?? 
  * { files } with the lockfiles added, { skipped } with the lockfiles that could not be
  * brought up to date and why, and for "audit" { unfixed }: the changes npm did not carry
  * out. A package.json is only changed with its lockfile then, as a raised range without the
- * lockfile to match would make "npm ci" fail.
+ * lockfile to match would make "npm ci" fail. With `before` (a Date), npm picks only releases
+ * published before it (npm's --before), for minReleaseAgeDays.
  */
-export async function refreshLockfiles(group, files, read, { run = npm, timeoutSeconds = 300 } = {}) {
+export async function refreshLockfiles(group, files, read, { run = npm, timeoutSeconds = 300, before } = {}) {
+  const age = before ? [`--before=${before.toISOString()}`] : [];
   const out = new Map(files);
   const skipped = [];
   const unfixed = [];
@@ -153,7 +155,7 @@ export async function refreshLockfiles(group, files, read, { run = npm, timeoutS
       if (npmrc != null) await writeFile(join(tmp, '.npmrc'), npmrc);
       for (const c of here.filter((h) => h.finding.fix.kind === 'npm-dependency')) {
         const m = [...manifests.values()].find((v) => v.path === c.file);
-        const spec = m && await published(run, c.finding.fix.to, c.finding.fix.name, tmp, timeoutSeconds);
+        const spec = m && await published(run, c.finding.fix.to, c.finding.fix.name, tmp, timeoutSeconds, age);
         const moved = spec && spec !== c.finding.fix.to ? applyFix(m.text, { fix: { ...c.finding.fix, from: c.finding.fix.to, to: spec } }) : {};
         if (!moved.text) continue;
         m.text = moved.text;
@@ -166,7 +168,7 @@ export async function refreshLockfiles(group, files, read, { run = npm, timeoutS
       await writeFile(join(tmp, 'package-lock.json'), lock);
       for (const { args, check = true } of COMMANDS[group.lockfile]) {
         try {
-          await run(args, tmp, timeoutSeconds);
+          await run([...args, ...age], tmp, timeoutSeconds);
         } catch (err) {
           if (check) throw err;
         }

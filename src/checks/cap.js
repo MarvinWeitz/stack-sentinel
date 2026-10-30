@@ -57,10 +57,10 @@ const addMonths = (date, months) => {
  * usage: { name, file, range, installed } — `installed` is the exact version from a lockfile.
  */
 export function evaluate(usage, pkg, { now, warnDays, maintenanceMonths }) {
-  const base = { check: CHECK, source: usage.installed ? 'lockfile' : 'range', file: usage.file };
+  const base = { check: CHECK, source: usage.installed ? 'lockfile' : 'range', file: usage.file, details: { package: pkg.name } };
   const findings = [];
   const recommendation = `${pkg.name} ${pkg.currentMajor} is the current major version${pkg.latest.node ? `; it needs Node.js ${pkg.latest.node}` : ''}`;
-  const add = (severity, message, extra = {}) => findings.push({ ...base, severity, message, ...extra });
+  const add = (severity, message, extra = {}) => findings.push({ ...base, severity, message, ...extra, details: { ...base.details, ...extra.details } });
   const move = { recommendation, action: `Upgrade ${pkg.name} to "^${pkg.currentMajor}" in package.json`, details: { recommended: String(pkg.currentMajor) },
     fix: { kind: 'cap-upgrade', name: pkg.name, from: usage.range, to: `^${pkg.currentMajor}` } };
 
