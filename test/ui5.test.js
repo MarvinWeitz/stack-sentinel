@@ -205,7 +205,7 @@ test('check selection: only, skip, typos and empty selections', () => {
 
 test('report records which checks ran and defaults the project to the folder name', async () => {
   const report = await scan({ root: fixture('btp-app'), now, fetchJsonImpl: async () => feed });
-  assert.deepEqual(report.checks, { run: ['ui5-version', 'node-version', 'cf-node-version', 'cap-version', 'npm-audit'], skipped: [] });
+  assert.deepEqual(report.checks, { run: ['ui5-version', 'node-version', 'cf-node-version', 'cap-version', 'npm-audit', 'license'], skipped: [] });
   assert.equal(report.project, 'btp-app');
 });
 

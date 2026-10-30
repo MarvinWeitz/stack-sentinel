@@ -19,8 +19,10 @@ Status as of 2026-10-11. Everything here was decided on that day unless noted.
 - [Check: cf-node-version](#check-cf-node-version)
 - [Check: cap-version](#check-cap-version)
 - [Check: npm-audit](#check-npm-audit)
+- [Check: license](#check-license)
 - [Fix pull requests](#fix-pull-requests)
 - [Ignore rules, release age and release notes](#ignore-rules-release-age-and-release-notes)
+- [Dashboard](#dashboard)
 - [Deliberately not built](#deliberately-not-built)
 - [Unverified and open](#unverified-and-open)
 
@@ -531,6 +533,30 @@ are not part of the deployed app.
 **Only npm lockfiles.** CAP and UI5 projects use npm. yarn and pnpm lockfiles
 have different formats and are not read.
 
+## Check: license
+
+Decided 2026-10-30, asked for because companies that build with the tool
+need to know which licenses they ship.
+
+**Licenses come from the lockfile.** npm copies each package's `license`
+into lockfile versions 2 and 3, so the check needs no network and no
+`node_modules`. Lockfile version 1 has none and is only reported as such;
+fetching every package from the registry would be slow for a gap that
+`npm install` with any current npm closes.
+
+**The default policy denies strong copyleft only.** AGPL, GPL, SSPL, EUPL
+and OSL can oblige a company to publish its own code; that is the risk a
+check should catch without being told. Weak copyleft (LGPL, MPL) and
+permissive licenses pass. A stricter company sets `license.allow`, and every
+license not on it becomes a warning. Lists match ids without their `-only`,
+`-or-later` or `+` variant, as policies are usually written per license.
+
+**A package without an SPDX license is info by default.** SAP's own packages,
+`@sap/cds` among them, declare `"SEE LICENSE IN LICENSE"`, so a warning
+would hit every CAP project. `license.unknown` raises it for companies that
+want each one reviewed. Approvals for single packages are ignore rules, with
+a reason, rather than another list.
+
 ## Fix pull requests
 
 Decided 2026-10-29.
@@ -663,6 +689,25 @@ not notify strangers or appear in their issues. Reading them is best effort;
 a failure becomes a link and never stops the pull request. Azure DevOps gets
 links only, because its 4000-character description limit would cut the
 table.
+
+## Dashboard
+
+Decided 2026-10-30.
+
+**A dashboard is opt-in and lives where work is planned.** Renovate's
+Dependency Dashboard is the model. The Teams card reaches whoever reads the
+channel; a GitHub issue or an Azure DevOps work item reaches whoever plans
+the work, and it always shows the current state instead of a stream of
+cards. It is off by default because it writes to the repository's issues or
+the project's work items, which some teams keep for their own use. Each
+run replaces the whole text: merging edits back would need state, and the
+project's config is the place to change what it says. On Azure DevOps it is
+a work item, as Azure Repos has no issues; work items belong to the project,
+so the title (which names the scanned project) tells repositories apart. Its
+description is HTML, so the dashboard is built as blocks that render to
+Markdown or HTML, rather than converting one into the other. A closed
+dashboard is not reopened: the next run makes a new one, and turning the
+setting off is how to stop it.
 
 ## Deliberately not built
 

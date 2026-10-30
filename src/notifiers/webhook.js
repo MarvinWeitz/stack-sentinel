@@ -38,6 +38,7 @@ export function teamsPayload(report, threshold, maxFindings) {
   const actions = [
     ...(report.links?.run ? [{ type: 'Action.OpenUrl', title: 'Open pipeline run', url: report.links.run }] : []),
     ...(report.links?.repository ? [{ type: 'Action.OpenUrl', title: 'Open repository', url: report.links.repository }] : []),
+    ...(report.dashboard?.url ? [{ type: 'Action.OpenUrl', title: 'Open dashboard', url: report.dashboard.url }] : []),
   ];
   return {
     type: 'message',

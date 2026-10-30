@@ -162,12 +162,12 @@ test('text output shows one line per problem with the affected files', async () 
 test('runs both checks, and each can be switched off', async () => {
   const both = await run([path('./fixtures/node-app'), '--json', '--fail-on', 'never']);
   const report = JSON.parse(both.stdout);
-  assert.deepEqual(report.checks.run, ['ui5-version', 'node-version', 'cf-node-version', 'cap-version', 'npm-audit']);
+  assert.deepEqual(report.checks.run, ['ui5-version', 'node-version', 'cf-node-version', 'cap-version', 'npm-audit', 'license']);
   assert.ok(report.findings.some((f) => f.check === 'node-version' && f.severity === 'error'));
 
   const skipped = await run([path('./fixtures/node-app')], { SENTINEL_SKIP_CHECKS: 'node-version' });
   assert.equal(skipped.code, 0);
-  assert.match(skipped.stdout, /checks run: ui5-version, cf-node-version, cap-version, npm-audit · skipped: node-version/);
+  assert.match(skipped.stdout, /checks run: ui5-version, cf-node-version, cap-version, npm-audit, license · skipped: node-version/);
   assert.match(skipped.stdout, /nothing was checked/);
 });
 

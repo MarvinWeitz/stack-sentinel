@@ -10,6 +10,12 @@ release notes.
 
 ## Unreleased
 
+- `SENTINEL_DASHBOARD_ENABLED=true` keeps one GitHub issue or Azure DevOps
+  work item per repository up to date with the latest findings, the open fix
+  pull requests and the ignored findings.
+- New check `license`: the licenses of the packages in `package-lock.json`
+  are checked against a policy. Strong copyleft (AGPL, GPL, SSPL, EUPL, OSL)
+  is an error by default; `license.allow` turns it into an allow list.
 - The title of an `npm-audit` fix pull request names the versions npm moved
   to, not the lowest fixed versions the advisories name, which npm may
   never have published (lodash 4.17.24, where npm moves to 4.18.0).

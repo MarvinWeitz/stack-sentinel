@@ -33,6 +33,11 @@ export const SETTINGS = [
   { key: 'notify.maxFindings', type: 'int', default: 25, desc: 'Most findings listed in one Teams card' },
   { key: 'minReleaseAgeDays', type: 'int', default: 0,
     desc: 'Recommend and move to UI5 patches and npm packages only once they were published this many days ago; 0 turns it off' },
+  { key: 'dashboard.enabled', type: 'bool', default: false,
+    desc: 'Keep one issue (GitHub) or work item (Azure DevOps) up to date with the latest report, open fix pull requests and ignored findings' },
+  { key: 'dashboard.title', type: 'string', default: 'stack-sentinel: {project}', desc: 'Title of the dashboard ({project} is the project name)' },
+  { key: 'dashboard.label', type: 'string', default: 'stack-sentinel', desc: 'Label (GitHub) or tag (Azure DevOps) the dashboard is found by' },
+  { key: 'dashboard.workItemType', type: 'string', default: 'Task', desc: 'Azure DevOps: the work item type of the dashboard' },
   { key: 'fix.mode', type: 'enum', values: ['off', 'apply', 'pr'], flag: 'fix', default: 'off',
     desc: 'Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (GitHub Actions and Azure DevOps)' },
   { key: 'fix.groups', type: 'list', values: ['ui5', 'node', 'npm-overrides', 'cap', 'npm-audit'], flag: 'fix-groups', default: ['ui5', 'node', 'npm-overrides'],
@@ -100,6 +105,16 @@ export const SETTINGS = [
     desc: 'Advisory severity from which a vulnerability is a warning (below: info)' },
   { key: 'audit.errorAt', type: 'enum', values: ['info', 'low', 'moderate', 'high', 'critical'], default: 'critical',
     desc: 'Advisory severity from which a vulnerability is an error' },
+
+  { key: 'license.lockfilePattern', type: 'regex', default: '(^|/)(package-lock|npm-shrinkwrap)\\.json$',
+    desc: 'Lockfiles whose installed packages\' licenses are checked (regex on the relative path)' },
+  { key: 'license.deny', type: 'list',
+    default: ['AGPL-1.0', 'AGPL-3.0', 'GPL-1.0', 'GPL-2.0', 'GPL-3.0', 'SSPL-1.0', 'EUPL-1.1', 'EUPL-1.2', 'OSL-3.0'],
+    desc: 'SPDX license ids that are errors (strong copyleft by default; -only and -or-later variants match; replaces the default list)' },
+  { key: 'license.allow', type: 'list', default: [],
+    desc: 'SPDX license ids that are allowed; when set, any other license is a warning (default: everything not denied)' },
+  { key: 'license.unknown', type: 'enum', values: LEVELS, default: 'info',
+    desc: 'Severity for a package without an SPDX license, e.g. "SEE LICENSE IN LICENSE" or none' },
 ];
 
 export const envName = (def) =>

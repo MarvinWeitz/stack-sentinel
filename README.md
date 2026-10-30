@@ -57,6 +57,7 @@ the file has to be edited.
 | [`cf-node-version`](docs/CHECKS.md#cf-node-version) | Node.js apps on Cloud Foundry asking for a version the buildpack no longer ships | Cloud Foundry Node.js buildpack |
 | [`cap-version`](docs/CHECKS.md#cap-version) | CAP packages on a major version SAP no longer supports | npm registry |
 | [`npm-audit`](docs/CHECKS.md#npm-audit) | Installed npm packages with known vulnerabilities | npm audit service |
+| [`license`](docs/CHECKS.md#license) | Installed npm packages whose license the policy does not allow, such as strong copyleft | `license.deny` and `license.allow` |
 
 Every finding has a severity (`error`, `warn`, `info` or `ok`), and those that
 call for a change say what to change, for example "Set framework.version to
@@ -107,6 +108,10 @@ its value and where it came from.
 | `scan.maxDepth` | `--max-depth` | `SENTINEL_SCAN_MAX_DEPTH` | `8` | How many folder levels deep to scan |
 | `notify.maxFindings` |  | `SENTINEL_NOTIFY_MAX_FINDINGS` | `25` | Most findings listed in one Teams card |
 | `minReleaseAgeDays` |  | `SENTINEL_MIN_RELEASE_AGE_DAYS` | `0` | Recommend and move to UI5 patches and npm packages only once they were published this many days ago; 0 turns it off (see [Fix pull requests](#fix-pull-requests)) |
+| `dashboard.enabled` |  | `SENTINEL_DASHBOARD_ENABLED` | `false` | Keep one issue (GitHub) or work item (Azure DevOps) up to date with the latest report, open fix pull requests and ignored findings (see [Dashboard](#dashboard)) |
+| `dashboard.title` |  | `SENTINEL_DASHBOARD_TITLE` | `stack-sentinel: {project}` | Title of the dashboard (`{project}` is the project name) |
+| `dashboard.label` |  | `SENTINEL_DASHBOARD_LABEL` | `stack-sentinel` | Label (GitHub) or tag (Azure DevOps) the dashboard is found by |
+| `dashboard.workItemType` |  | `SENTINEL_DASHBOARD_WORK_ITEM_TYPE` | `Task` | Azure DevOps: the work item type of the dashboard |
 | `fix.mode` | `--fix` | `SENTINEL_FIX_MODE` | `off` | Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (see [Fix pull requests](#fix-pull-requests)): `off`, `apply`, `pr` |
 | `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,node,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), node (Node.js versions), npm-overrides (npm overrides no longer needed); and, off by default, cap (CAP major upgrades, as draft pull requests) and npm-audit (vulnerable npm packages; runs npm) |
 | `fix.on` | `--fix-on` | `SENTINEL_FIX_ON` | `info` | Fix findings at or above this severity: `ok`, `info`, `warn`, `error` |
@@ -146,6 +151,10 @@ its value and where it came from.
 | `audit.reportFrom` |  | `SENTINEL_AUDIT_REPORT_FROM` | `moderate` | Vulnerabilities below this advisory severity are not reported: `info`, `low`, `moderate`, `high`, `critical` |
 | `audit.warnAt` |  | `SENTINEL_AUDIT_WARN_AT` | `high` | Advisory severity from which a vulnerability is a warning (below: info): `info`, `low`, `moderate`, `high`, `critical` |
 | `audit.errorAt` |  | `SENTINEL_AUDIT_ERROR_AT` | `critical` | Advisory severity from which a vulnerability is an error: `info`, `low`, `moderate`, `high`, `critical` |
+| `license.lockfilePattern` |  | `SENTINEL_LICENSE_LOCKFILE_PATTERN` | `(^\|/)(package-lock\|npm-shrinkwrap)\.json$` | Lockfiles whose installed packages' licenses are checked (regex on the relative path) |
+| `license.deny` |  | `SENTINEL_LICENSE_DENY` | `AGPL-1.0,AGPL-3.0,GPL-1.0,GPL-2.0,GPL-3.0,SSPL-1.0,EUPL-1.1,EUPL-1.2,OSL-3.0` | SPDX license ids that are errors (strong copyleft by default; -only and -or-later variants match; replaces the default list) |
+| `license.allow` |  | `SENTINEL_LICENSE_ALLOW` | `(none)` | SPDX license ids that are allowed; when set, any other license is a warning (default: everything not denied) |
+| `license.unknown` |  | `SENTINEL_LICENSE_UNKNOWN` | `info` | Severity for a package without an SPDX license, e.g. "SEE LICENSE IN LICENSE" or none: `ok`, `info`, `warn`, `error` |
 
 List values are comma-separated in flags and environment variables, and JSON
 arrays in the config file. Example config:
@@ -409,6 +418,33 @@ Cloud Foundry, which would be a guess.
 
 The examples already carry the permissions and the token mapping, so turning
 it on needs no change to the pipeline file.
+
+<a id="dashboard"></a>
+
+## 📋 Dashboard
+
+With `SENTINEL_DASHBOARD_ENABLED=true`, every run keeps one issue (GitHub) or
+work item (Azure DevOps) up to date, like Renovate's Dependency Dashboard. It
+is where people find the state of the stack without the Teams channel: every
+finding with what to do, the open fix pull requests (and those not opened, with
+why), and the ignored findings with their reason and end date. The Teams card
+links it.
+
+- **One per repository**, titled `stack-sentinel: <project>` (`dashboard.title`)
+  and found again by its label or tag (`dashboard.label`). Each run replaces its
+  text, so edits to it are lost; change the project instead.
+- **Closing it does not stop it**: the next run opens a new one. Turn
+  `dashboard.enabled` off to stop.
+- It is written after the fix pull requests, so it links the ones this run
+  opened. It does not depend on `fix.mode`.
+- If it cannot be written, the report is still sent, and the run then exits
+  with code `2`.
+
+| | GitHub Actions | Azure DevOps |
+| --- | --- | --- |
+| What it is | An issue with the label `stack-sentinel` | A work item of type `Task` (`dashboard.workItemType`) with the tag `stack-sentinel`, in the pipeline's project |
+| Allow it once | `issues: write` in the workflow's permissions (the example has it) | The project's build service needs "Edit work items in this node" on the area path (Project settings → Project configuration → Areas) |
+| Token | `GITHUB_TOKEN` or `SENTINEL_FIX_TOKEN` | `$(System.AccessToken)`, mapped in the example |
 
 <a id="heartbeat"></a>
 

@@ -32,7 +32,9 @@ export function githubProvider({ apiUrl = 'https://api.github.com', repository, 
       const hint = res.status === 403 && method === 'POST' && path === '/pulls'
         ? ' Allow it under Settings -> Actions -> General -> "Allow GitHub Actions to create and approve pull requests", or set SENTINEL_FIX_TOKEN.'
         : res.status === 403 || res.status === 404
-          ? ' The token needs "contents: write" and "pull-requests: write" (the permissions block of the workflow).'
+          ? path.startsWith('/issues') && !/\/comments$/.test(path)
+            ? ' The dashboard needs "issues: write" (the permissions block of the workflow).'
+            : ' The token needs "contents: write" and "pull-requests: write" (the permissions block of the workflow).'
           : '';
       throw Object.assign(new Error(`GitHub answered ${method} ${path} with HTTP ${res.status}${detail ? `: ${detail}` : ''}.${hint}`), { status: res.status });
     }
@@ -119,6 +121,22 @@ export function githubProvider({ apiUrl = 'https://api.github.com', repository, 
 
     async updatePullRequest(pr, { title, body }) {
       await call('PATCH', `/pulls/${pr.id}`, { title, body });
+    },
+
+    /** The open dashboard issue: labelled `label`, with the dashboard's marker in its text. */
+    async findDashboard({ label }) {
+      const issues = await call('GET', `/issues?state=open&labels=${encodeURIComponent(label)}&per_page=100`);
+      const found = issues.find((i) => !i.pull_request && (i.body ?? '').includes('<!-- stack-sentinel-dashboard -->'));
+      return found ? { id: found.number, title: found.title, body: found.body, url: found.html_url } : null;
+    },
+
+    async createDashboard({ title, body, label }) {
+      const issue = await call('POST', '/issues', { title, body, labels: [label] });
+      return { id: issue.number, url: issue.html_url };
+    },
+
+    async updateDashboard(issue, { title, body }) {
+      await call('PATCH', `/issues/${issue.id}`, { title, body });
     },
 
     async closePullRequest(pr, comment) {

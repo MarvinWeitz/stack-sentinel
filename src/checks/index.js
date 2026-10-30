@@ -1,5 +1,6 @@
 import { capCheck } from './cap.js';
 import { cfNodeCheck } from './cf-node.js';
+import { licenseCheck } from './license.js';
 import { nodeCheck } from './node.js';
 import { npmAuditCheck } from './npm-audit.js';
 import { ui5Check } from './ui5.js';
@@ -9,7 +10,7 @@ import { ui5Check } from './ui5.js';
  * ctx: { root, files, config, now, fetchJson, fetchText, postJson }
  * Finding: { check, severity, source, file?, version?, message, details? }
  */
-export const checks = [ui5Check, nodeCheck, cfNodeCheck, capCheck, npmAuditCheck];
+export const checks = [ui5Check, nodeCheck, cfNodeCheck, capCheck, npmAuditCheck, licenseCheck];
 
 /**
  * Decides which checks run from the resolved settings (`checks` = run only these,

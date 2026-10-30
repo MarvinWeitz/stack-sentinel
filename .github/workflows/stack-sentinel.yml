@@ -8,6 +8,7 @@
 #     Variables: any SENTINEL_... setting from the README, for example
 #                SENTINEL_NOTIFY_ON = ok   send a card on every run; useful for a first test
 #                SENTINEL_FIX_MODE = pr    open pull requests that fix what can be fixed safely
+#                SENTINEL_DASHBOARD_ENABLED = true   keep a dashboard issue up to date
 #                SENTINEL_SHARED_CONFIG    address of a config shared by many projects
 #                SENTINEL_SKIP_CHECKS, SENTINEL_UI5_WARN_DAYS, ...
 # Variables defined for a whole organization work the same way.
@@ -19,11 +20,13 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    # Write access is used only with SENTINEL_FIX_MODE = pr, to open fix pull requests.
-    # Without that setting, "contents: read" is enough.
+    # Write access is used only with SENTINEL_FIX_MODE = pr, to open fix pull requests, and
+    # "issues: write" only with SENTINEL_DASHBOARD_ENABLED = true, for the dashboard issue.
+    # Without those settings, "contents: read" is enough.
     permissions:
       contents: write
       pull-requests: write
+      issues: write
     env:
       # The npm package to run. "@latest" follows the latest release, so the tool stays
       # current without anyone editing this file. To stay on one release instead, set the
