@@ -22,6 +22,7 @@ Status as of 2026-10-11. Everything here was decided on that day unless noted.
 - [Check: license](#check-license)
 - [Fix pull requests](#fix-pull-requests)
 - [Ignore rules, release age and release notes](#ignore-rules-release-age-and-release-notes)
+- [Dashboard](#dashboard)
 - [Deliberately not built](#deliberately-not-built)
 - [Unverified and open](#unverified-and-open)
 
@@ -688,6 +689,25 @@ not notify strangers or appear in their issues. Reading them is best effort;
 a failure becomes a link and never stops the pull request. Azure DevOps gets
 links only, because its 4000-character description limit would cut the
 table.
+
+## Dashboard
+
+Decided 2026-10-30.
+
+**A dashboard is opt-in and lives where work is planned.** Renovate's
+Dependency Dashboard is the model. The Teams card reaches whoever reads the
+channel; a GitHub issue or an Azure DevOps work item reaches whoever plans
+the work, and it always shows the current state instead of a stream of
+cards. It is off by default because it writes to the repository's issues or
+the project's work items, which some teams keep for their own use. Each
+run replaces the whole text: merging edits back would need state, and the
+project's config is the place to change what it says. On Azure DevOps it is
+a work item, as Azure Repos has no issues; work items belong to the project,
+so the title (which names the scanned project) tells repositories apart. Its
+description is HTML, so the dashboard is built as blocks that render to
+Markdown or HTML, rather than converting one into the other. A closed
+dashboard is not reopened: the next run makes a new one, and turning the
+setting off is how to stop it.
 
 ## Deliberately not built
 

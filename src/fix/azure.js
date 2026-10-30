@@ -7,18 +7,19 @@
 const ZERO = '0'.repeat(40);
 const VERSION = 'api-version=7.1';
 
-export function azureProvider({ collectionUri, project, repositoryId, token, timeoutSeconds = 30, fetchImpl = fetch }) {
+export function azureProvider({ collectionUri, project, repositoryId, token, timeoutSeconds = 30, fetchImpl = fetch, workItemType = 'Task' }) {
+  const projectApi = `${collectionUri.replace(/\/*$/, '/')}${encodeURIComponent(project)}/_apis/wit`;
   const base = `${collectionUri.replace(/\/*$/, '/')}${encodeURIComponent(project)}/_apis/git/repositories/${encodeURIComponent(repositoryId)}`;
   const heads = (branch) => `refs/heads/${branch}`;
 
-  async function call(method, path, body, { allow404 = false } = {}) {
+  async function call(method, path, body, { allow404 = false, root = base, contentType = 'application/json' } = {}) {
     const sep = path.includes('?') ? '&' : '?';
-    const res = await fetchImpl(`${base}${path}${sep}${VERSION}`, {
+    const res = await fetchImpl(`${root}${path}${sep}${VERSION}`, {
       method,
       headers: {
         accept: 'application/json',
         authorization: `Bearer ${token}`,
-        ...(body ? { 'content-type': 'application/json' } : {}),
+        ...(body ? { 'content-type': contentType } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(timeoutSeconds * 1000),
@@ -29,9 +30,11 @@ export function azureProvider({ collectionUri, project, repositoryId, token, tim
       try {
         detail = (await res.json()).message ?? '';
       } catch { /* no JSON body */ }
-      const hint = res.status === 401 || res.status === 403
-        ? ' Pass $(System.AccessToken) as SYSTEM_ACCESSTOKEN, and give the project\'s build service "Contribute" and "Contribute to pull requests" on the repository.'
-        : '';
+      const hint = (res.status === 401 || res.status === 403) && root === projectApi
+        ? ' The dashboard needs the project\'s build service to have "Edit work items in this node" on the area path (Project settings -> Project configuration -> Areas).'
+        : res.status === 401 || res.status === 403
+          ? ' Pass $(System.AccessToken) as SYSTEM_ACCESSTOKEN, and give the project\'s build service "Contribute" and "Contribute to pull requests" on the repository.'
+          : '';
       throw Object.assign(new Error(`Azure DevOps answered ${method} ${path.split('?')[0] || '/'} with HTTP ${res.status}${detail ? `: ${detail}` : ''}.${hint}`), { status: res.status });
     }
     return res.status === 204 ? null : res.json();
@@ -120,6 +123,38 @@ export function azureProvider({ collectionUri, project, repositoryId, token, tim
 
     async updatePullRequest(pr, { title, body }) {
       await call('PATCH', `/pullrequests/${pr.id}`, { title, description: fit(body) });
+    },
+
+    /**
+     * The dashboard work item: tagged `label`, with the dashboard's title, in any state but
+     * Removed. Work items belong to the project, not the repository, so the title (which names
+     * the project scanned by default) tells repositories apart.
+     */
+    async findDashboard({ title, label }) {
+      const quote = (text) => `'${text.replace(/'/g, "''")}'`;
+      const query = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.Tags] CONTAINS ${quote(label)} `
+        + `AND [System.Title] = ${quote(title)} AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC`;
+      const found = await call('POST', '/wiql', { query }, { root: projectApi });
+      const id = found.workItems?.[0]?.id;
+      if (!id) return null;
+      const item = await call('GET', `/workitems/${id}?fields=System.Title,System.Description`, undefined, { root: projectApi });
+      return { id, title: item.fields['System.Title'], body: item.fields['System.Description'] ?? '', url: item._links?.html?.href ?? `${collectionUri.replace(/\/*$/, '/')}${encodeURIComponent(project)}/_workitems/edit/${id}` };
+    },
+
+    async createDashboard({ title, body, label }) {
+      const item = await call('POST', `/workitems/$${encodeURIComponent(workItemType)}`, [
+        { op: 'add', path: '/fields/System.Title', value: title },
+        { op: 'add', path: '/fields/System.Description', value: body },
+        { op: 'add', path: '/fields/System.Tags', value: label },
+      ], { root: projectApi, contentType: 'application/json-patch+json' });
+      return { id: item.id, url: item._links?.html?.href ?? `${collectionUri.replace(/\/*$/, '/')}${encodeURIComponent(project)}/_workitems/edit/${item.id}` };
+    },
+
+    async updateDashboard(item, { title, body }) {
+      await call('PATCH', `/workitems/${item.id}`, [
+        { op: 'add', path: '/fields/System.Title', value: title },
+        { op: 'add', path: '/fields/System.Description', value: body },
+      ], { root: projectApi, contentType: 'application/json-patch+json' });
     },
 
     async closePullRequest(pr, comment) {

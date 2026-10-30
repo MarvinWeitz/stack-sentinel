@@ -41,10 +41,10 @@ function repositoryRoot(root) {
  * SENTINEL_FIX_TOKEN when set, else the pipeline's own: GITHUB_TOKEN on GitHub Actions,
  * SYSTEM_ACCESSTOKEN on Azure DevOps.
  */
-export function detectProvider(env, { token, timeoutSeconds }) {
+export function detectProvider(env, { token, timeoutSeconds, workItemType }) {
   if (env.GITHUB_ACTIONS === 'true' && env.GITHUB_REPOSITORY) {
     const auth = token ?? env.GITHUB_TOKEN;
-    if (!auth) throw new Error('Opening pull requests needs a token: pass GITHUB_TOKEN (or SENTINEL_FIX_TOKEN) to the step.');
+    if (!auth) throw new Error('Fix pull requests and the dashboard need a token: pass GITHUB_TOKEN (or SENTINEL_FIX_TOKEN) to the step.');
     return githubProvider({ apiUrl: env.GITHUB_API_URL, repository: env.GITHUB_REPOSITORY, token: auth, timeoutSeconds });
   }
   if (env.TF_BUILD === 'True' && env.SYSTEM_COLLECTIONURI) {
@@ -52,12 +52,12 @@ export function detectProvider(env, { token, timeoutSeconds }) {
       throw new Error(`Pull requests can be opened in Azure Repos only, not in a ${env.BUILD_REPOSITORY_PROVIDER} repository.`);
     }
     const auth = token ?? env.SYSTEM_ACCESSTOKEN;
-    if (!auth) throw new Error('Opening pull requests needs a token: map $(System.AccessToken) to SYSTEM_ACCESSTOKEN in the step\'s env.');
+    if (!auth) throw new Error('Fix pull requests and the dashboard need a token: map $(System.AccessToken) to SYSTEM_ACCESSTOKEN in the step\'s env.');
     return azureProvider({
-      collectionUri: env.SYSTEM_COLLECTIONURI, project: env.SYSTEM_TEAMPROJECT, repositoryId: env.BUILD_REPOSITORY_ID, token: auth, timeoutSeconds,
+      collectionUri: env.SYSTEM_COLLECTIONURI, project: env.SYSTEM_TEAMPROJECT, repositoryId: env.BUILD_REPOSITORY_ID, token: auth, timeoutSeconds, workItemType,
     });
   }
-  throw new Error('Pull requests can be opened on GitHub Actions and Azure DevOps only. Use --fix apply (SENTINEL_FIX_MODE=apply) to change the files instead.');
+  throw new Error('Fix pull requests and the dashboard work on GitHub Actions and Azure DevOps only. Use --fix apply (SENTINEL_FIX_MODE=apply) to change the files instead.');
 }
 
 /** Why npm may not have moved a package, when releases after `before` were left out. */

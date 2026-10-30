@@ -108,6 +108,10 @@ its value and where it came from.
 | `scan.maxDepth` | `--max-depth` | `SENTINEL_SCAN_MAX_DEPTH` | `8` | How many folder levels deep to scan |
 | `notify.maxFindings` |  | `SENTINEL_NOTIFY_MAX_FINDINGS` | `25` | Most findings listed in one Teams card |
 | `minReleaseAgeDays` |  | `SENTINEL_MIN_RELEASE_AGE_DAYS` | `0` | Recommend and move to UI5 patches and npm packages only once they were published this many days ago; 0 turns it off (see [Fix pull requests](#fix-pull-requests)) |
+| `dashboard.enabled` |  | `SENTINEL_DASHBOARD_ENABLED` | `false` | Keep one issue (GitHub) or work item (Azure DevOps) up to date with the latest report, open fix pull requests and ignored findings (see [Dashboard](#dashboard)) |
+| `dashboard.title` |  | `SENTINEL_DASHBOARD_TITLE` | `stack-sentinel: {project}` | Title of the dashboard (`{project}` is the project name) |
+| `dashboard.label` |  | `SENTINEL_DASHBOARD_LABEL` | `stack-sentinel` | Label (GitHub) or tag (Azure DevOps) the dashboard is found by |
+| `dashboard.workItemType` |  | `SENTINEL_DASHBOARD_WORK_ITEM_TYPE` | `Task` | Azure DevOps: the work item type of the dashboard |
 | `fix.mode` | `--fix` | `SENTINEL_FIX_MODE` | `off` | Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (see [Fix pull requests](#fix-pull-requests)): `off`, `apply`, `pr` |
 | `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,node,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), node (Node.js versions), npm-overrides (npm overrides no longer needed); and, off by default, cap (CAP major upgrades, as draft pull requests) and npm-audit (vulnerable npm packages; runs npm) |
 | `fix.on` | `--fix-on` | `SENTINEL_FIX_ON` | `info` | Fix findings at or above this severity: `ok`, `info`, `warn`, `error` |
@@ -414,6 +418,33 @@ Cloud Foundry, which would be a guess.
 
 The examples already carry the permissions and the token mapping, so turning
 it on needs no change to the pipeline file.
+
+<a id="dashboard"></a>
+
+## 📋 Dashboard
+
+With `SENTINEL_DASHBOARD_ENABLED=true`, every run keeps one issue (GitHub) or
+work item (Azure DevOps) up to date, like Renovate's Dependency Dashboard. It
+is where people find the state of the stack without the Teams channel: every
+finding with what to do, the open fix pull requests (and those not opened, with
+why), and the ignored findings with their reason and end date. The Teams card
+links it.
+
+- **One per repository**, titled `stack-sentinel: <project>` (`dashboard.title`)
+  and found again by its label or tag (`dashboard.label`). Each run replaces its
+  text, so edits to it are lost; change the project instead.
+- **Closing it does not stop it**: the next run opens a new one. Turn
+  `dashboard.enabled` off to stop.
+- It is written after the fix pull requests, so it links the ones this run
+  opened. It does not depend on `fix.mode`.
+- If it cannot be written, the report is still sent, and the run then exits
+  with code `2`.
+
+| | GitHub Actions | Azure DevOps |
+| --- | --- | --- |
+| What it is | An issue with the label `stack-sentinel` | A work item of type `Task` (`dashboard.workItemType`) with the tag `stack-sentinel`, in the pipeline's project |
+| Allow it once | `issues: write` in the workflow's permissions (the example has it) | The project's build service needs "Edit work items in this node" on the area path (Project settings → Project configuration → Areas) |
+| Token | `GITHUB_TOKEN` or `SENTINEL_FIX_TOKEN` | `$(System.AccessToken)`, mapped in the example |
 
 <a id="heartbeat"></a>
 

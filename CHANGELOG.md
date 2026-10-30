@@ -10,6 +10,9 @@ release notes.
 
 ## Unreleased
 
+- `SENTINEL_DASHBOARD_ENABLED=true` keeps one GitHub issue or Azure DevOps
+  work item per repository up to date with the latest findings, the open fix
+  pull requests and the ignored findings.
 - New check `license`: the licenses of the packages in `package-lock.json`
   are checked against a policy. Strong copyleft (AGPL, GPL, SSPL, EUPL, OSL)
   is an error by default; `license.allow` turns it into an allow list.

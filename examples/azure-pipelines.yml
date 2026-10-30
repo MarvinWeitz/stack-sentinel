@@ -9,11 +9,14 @@
 #     SENTINEL_FIX_MODE = pr    open pull requests that fix what can be fixed safely; the
 #                               project's build service needs "Contribute" and "Contribute to
 #                               pull requests" on the repository (Project settings -> Repositories)
+#     SENTINEL_DASHBOARD_ENABLED = true   keep a dashboard work item up to date; the
+#                               project's build service needs "Edit work items in this node"
+#                               on the area path (Project settings -> Project configuration -> Areas)
 #     SENTINEL_SHARED_CONFIG    address of a config shared by many projects
 #     SENTINEL_SOURCE, SENTINEL_PATH, SENTINEL_PROJECT  where to install from, what to scan, the
 #                               report title (defaults below)
 # Azure DevOps passes non-secret variables to the tool by itself; only the secrets and the
-# pipeline's token (used for fix pull requests) need the mapping at the bottom of this file.
+# pipeline's token (used for fix pull requests and the dashboard) need the mapping at the bottom of this file.
 trigger: none
 schedules:
   - cron: "17 6 * * 1" # Mondays 06:17 UTC

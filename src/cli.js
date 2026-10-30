@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { checks, selectChecks } from './checks/index.js';
+import { updateDashboard } from './dashboard.js';
 import { DAY } from './feed.js';
 import { listFiles } from './files.js';
 import { advisoryFilter, applyIgnores, parseIgnoreRules } from './ignore.js';
@@ -162,6 +163,8 @@ function printText(report) {
     console.log(`  fixed: ${f.title}${f.files.length ? ` (${describeFiles(f.files)})` : ' (nothing changed)'}`);
     for (const reason of f.skipped) console.log(`          not changed: ${reason}`);
   }
+  if (report.dashboard) console.log(`  dashboard ${report.dashboard.action}: ${report.dashboard.url}`);
+  if (report.dashboardError) console.log(`  dashboard not updated: ${report.dashboardError}`);
   for (const pr of report.pullRequests ?? []) {
     const merge = pr.autoMerge === true ? ', auto-merge on' : pr.autoMerge === false ? ', auto-merge could not be turned on' : '';
     console.log(`  pull request ${pr.action}: ${pr.title}${pr.url ? `  ${pr.url}` : ''}${pr.reason ? ` (${pr.reason})` : ''}${merge}`);
@@ -229,15 +232,16 @@ export async function main(argv, env = process.env) {
   // Fixes come before the report goes out, so the card can link the pull requests. A fix
   // that fails is a tool failure, but the report is still delivered first.
   let fixError;
+  let provider;
+  const platform = () => (provider ??= detectProvider(env, { token: settings.fix.token, timeoutSeconds: settings.timeoutSeconds, workItemType: settings.dashboard.workItemType }));
   const before = settings.minReleaseAgeDays > 0 ? new Date(Date.parse(report.generatedAt) - settings.minReleaseAgeDays * DAY) : undefined;
   try {
     if (settings.fix.mode === 'apply') report.fixes = await applyFixes(report, root, { fixOn: settings.fix.on, only: settings.fix.groups, before });
     if (settings.fix.mode === 'pr') {
-      const provider = detectProvider(env, { token: settings.fix.token, timeoutSeconds: settings.timeoutSeconds });
       report.pullRequests = await openPullRequests(report, root, {
-        provider, fixOn: settings.fix.on, only: settings.fix.groups, branchPrefix: settings.fix.branchPrefix, maxPullRequests: settings.fix.maxPullRequests,
+        provider: platform(), fixOn: settings.fix.on, only: settings.fix.groups, branchPrefix: settings.fix.branchPrefix, maxPullRequests: settings.fix.maxPullRequests,
         autoMerge: settings.fix.autoMerge, before, registry: settings.audit.registry,
-        fetchJson: makeNotesFetch(settings.timeoutSeconds, provider.platform === 'github' && /^https:\/\/github\.com\/?$/.test(env.GITHUB_SERVER_URL ?? 'https://github.com')
+        fetchJson: makeNotesFetch(settings.timeoutSeconds, provider?.platform === 'github' && /^https:\/\/github\.com\/?$/.test(env.GITHUB_SERVER_URL ?? 'https://github.com')
           ? settings.fix.token ?? env.GITHUB_TOKEN : undefined),
         log: (line) => console.error(`stack-sentinel: ${line}`),
       });
@@ -247,6 +251,17 @@ export async function main(argv, env = process.env) {
   } catch (err) {
     fixError = err;
     report.fixError = err.message;
+  }
+
+  // The dashboard comes last, so it shows the fix pull requests of this run.
+  let dashboardError;
+  if (settings.dashboard.enabled) {
+    try {
+      report.dashboard = await updateDashboard(report, platform(), settings.dashboard);
+    } catch (err) {
+      dashboardError = err;
+      report.dashboardError = err.message;
+    }
   }
 
   if (cli.json) console.log(JSON.stringify(report, null, 2));
@@ -277,5 +292,6 @@ export async function main(argv, env = process.env) {
   }
 
   if (fixError) throw new Error(`Could not fix the findings: ${fixError.message}`);
+  if (dashboardError) throw new Error(`Could not update the dashboard: ${dashboardError.message}`);
   return settings.failOn !== 'never' && atLeast(report.status, settings.failOn) ? 1 : 0;
 }
