@@ -4,6 +4,8 @@ What each check looks at and when it reports what. Back to the [README](../READM
 
 `stack-sentinel --list-checks` prints the ids. Settings named here (`ui5.warnDays`, …) are listed in the README under [Settings](../README.md#settings).
 
+Some findings can be fixed automatically: they carry a `fix` in the JSON report, and `SENTINEL_FIX_MODE` applies them or opens pull requests for them (README, [Fix pull requests](../README.md#fix-pull-requests)).
+
 ## `ui5-version`
 
 Compares the UI5 versions a project uses with SAP's version overview feed
@@ -60,6 +62,8 @@ release schedule
 | --- | --- |
 | `package.json` → `engines.node` | The range of Node.js versions the project accepts; on Cloud Foundry the buildpack picks the runtime from it |
 | `.nvmrc`, `.node-version` | The version used for local development and CI |
+| CI pipelines (`.github/workflows/*.yml`, `azure-pipelines*.yml`) → `actions/setup-node` `node-version`, `NodeTool` `versionSpec`, `UseNode` `version` | The version the pipeline builds and tests with; expressions and build matrices are not read |
+| `Dockerfile`, `Containerfile` → `FROM node:<tag>` | The version of the official node image the container is built on |
 
 | Severity | When |
 | --- | --- |
@@ -167,6 +171,9 @@ The action depends on what the version ranges along the way allow:
 | A dependency pins it below the fix | Update the direct dependency that brings it in, or force the version with `overrides` in `package.json` |
 | It is bundled inside another package | Only a new release of that package fixes it |
 | No fixed version is known | Consider replacing it, or the direct dependency that brings it in |
+
+The first two rows carry a `fix`: with `fix.groups` naming `npm-audit`, the
+fix pull request raises the range and lets npm move the package (README, [Fix pull requests](../README.md#fix-pull-requests)).
 
 An `overrides` entry in `package.json` forces a version, and stays in force
 after the reason for it is gone. The check reads the `overrides` of the

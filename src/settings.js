@@ -31,6 +31,17 @@ export const SETTINGS = [
     desc: 'Folder names that are not scanned (replaces the default list)' },
   { key: 'scan.maxDepth', type: 'int', flag: 'max-depth', default: 8, desc: 'How many folder levels deep to scan' },
   { key: 'notify.maxFindings', type: 'int', default: 25, desc: 'Most findings listed in one Teams card' },
+  { key: 'fix.mode', type: 'enum', values: ['off', 'apply', 'pr'], flag: 'fix', default: 'off',
+    desc: 'Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (GitHub Actions and Azure DevOps)' },
+  { key: 'fix.groups', type: 'list', values: ['ui5', 'node', 'npm-overrides', 'cap', 'npm-audit'], flag: 'fix-groups', default: ['ui5', 'node', 'npm-overrides'],
+    desc: 'Kinds of fix to make, one pull request each: ui5 (UI5 versions), node (Node.js versions), npm-overrides (npm overrides no longer needed); and, off by default, cap (CAP major upgrades, as draft pull requests) and npm-audit (vulnerable npm packages; runs npm)' },
+  { key: 'fix.on', type: 'enum', values: LEVELS, flag: 'fix-on', default: 'info', desc: 'Fix findings at or above this severity' },
+  { key: 'fix.token', type: 'string', env: 'SENTINEL_FIX_TOKEN', noConfig: true, secret: true,
+    desc: 'Token that opens the pull requests (default: GITHUB_TOKEN or SYSTEM_ACCESSTOKEN; not read from the config file)' },
+  { key: 'fix.autoMerge', type: 'enum', values: ['off', 'patch', 'all'], default: 'off',
+    desc: 'Let fix pull requests merge by themselves once their checks pass: patch for those that only move to a newer patch of the same version, all for every one' },
+  { key: 'fix.branchPrefix', type: 'string', default: 'stack-sentinel/', desc: 'Start of the branch names of fix pull requests' },
+  { key: 'fix.maxPullRequests', type: 'int', default: 5, desc: 'Most fix pull requests open at the same time' },
 
   { key: 'ui5.feed', type: 'string', default: 'https://ui5.sap.com/versionoverview.json',
     desc: 'Version overview feed: a URL, or a path to a downloaded copy' },
@@ -53,6 +64,10 @@ export const SETTINGS = [
   { key: 'node.requireLts', type: 'bool', default: true, desc: 'Warn when only non-LTS Node.js releases are allowed' },
   { key: 'node.warnDays', type: 'int', default: 180, desc: 'Warn this many days before end of life' },
   { key: 'node.packagePattern', type: 'regex', default: '(^|/)package\\.json$', desc: 'Files read for "engines.node" (regex on the relative path)' },
+  { key: 'node.ciPattern', type: 'regex', default: '(^|/)(\\.github/workflows/[^/]+|azure-pipelines[^/]*|\\.azure-pipelines/[^/]+)\\.ya?ml$',
+    desc: 'CI pipeline files read for the Node.js version they set up (regex on the relative path)' },
+  { key: 'node.containerPattern', type: 'regex', default: '(^|/)(Dockerfile|Containerfile)([.-][\\w.-]+)?$',
+    desc: 'Dockerfiles read for the node image they build on (regex on the relative path)' },
   { key: 'node.versionFilePattern', type: 'regex', default: '(^|/)\\.(nvmrc|node-version)$', desc: 'Files read as Node.js version files (regex on the relative path)' },
 
   { key: 'cf.feed', type: 'string', default: 'https://raw.githubusercontent.com/cloudfoundry/nodejs-buildpack/master/manifest.yml',
@@ -120,7 +135,9 @@ function coerce(def, raw, where) {
     }
     case 'list': {
       const items = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(',') : fail('a list');
-      return items.map((s) => String(s).trim()).filter(Boolean);
+      const list = items.map((s) => String(s).trim()).filter(Boolean);
+      if (def.values && list.some((v) => !def.values.includes(v))) fail(`a list of ${def.values.join(', ')}`);
+      return list;
     }
     case 'enum':
       return def.values.includes(raw) ? raw : fail(`one of ${def.values.join(', ')}`);

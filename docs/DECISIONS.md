@@ -19,6 +19,7 @@ Status as of 2026-10-11. Everything here was decided on that day unless noted.
 - [Check: cf-node-version](#check-cf-node-version)
 - [Check: cap-version](#check-cap-version)
 - [Check: npm-audit](#check-npm-audit)
+- [Fix pull requests](#fix-pull-requests)
 - [Deliberately not built](#deliberately-not-built)
 - [Unverified and open](#unverified-and-open)
 
@@ -529,6 +530,88 @@ are not part of the deployed app.
 **Only npm lockfiles.** CAP and UI5 projects use npm. yarn and pnpm lockfiles
 have different formats and are not read.
 
+## Fix pull requests
+
+Decided 2026-10-29.
+
+**The tool may change the repository it runs in, but only on request.** Until
+now it only read and reported. A Dependabot-like mode was asked for, so that a
+finding comes with the change that fixes it. It is off by default
+(`fix.mode`): `apply` changes the scanned files, `pr` opens pull requests.
+
+**Only safe text edits.** A fix is made when the finding's action names one
+value in one file: UI5 versions in `ui5.yaml`, bootstrap URLs and the Work
+Zone pin, Node.js versions in `"engines.node"` and version files, and npm
+overrides that no longer do anything. `minUI5Version` is a statement of
+support and is never raised. A missing
+`"engines.node"` is only added for Cloud Foundry apps, which run on the
+buildpack default anyway; elsewhere the version would be a guess. A
+range is only rewritten when it is a plain lower bound (`>=18`).
+
+**Two opt-in groups run npm, the one child process the tool starts.** CAP
+majors and vulnerable packages need a lockfile update, and only npm writes a
+lockfile correctly; a hand-written one would be a guess. When asked for
+(`fix.groups` names `cap` or `npm-audit`, neither is on by default), npm runs
+with `--package-lock-only --ignore-scripts` in a temporary folder holding
+only `package.json`, `package-lock.json` and `.npmrc`: nothing is installed,
+no package scripts run, and the checkout is not touched. The scan itself
+still starts no process. For a lockfile that covers npm workspaces, every
+workspace's `package.json` goes into the folder too, found from the
+lockfile's own list of them, so npm sees the whole project. `cap` opens as a
+draft, because a new major can need code changes, and is never set to
+auto-merge. `npm-audit` only takes findings where `npm audit fix` can do the
+work after raising a range in the project's or a workspace's own `package.json`, keeping its
+style (exact stays exact, `~` stays `~`); afterwards it checks that each
+package moved, and drops what npm left, with its raised range, so a
+`package.json` never asks for what the lockfile does not hold. `npm audit
+fix` may move other packages within their ranges too; the pull request says
+so.
+
+**For Node.js, what Cloud Foundry ships wins.** `node-version` recommends the
+newest long-term support release, `cf-node-version` the line the buildpack
+keeps longest. When both want to change the same `"engines.node"`, the
+buildpack's choice is taken, because a version it does not ship fails
+staging.
+
+**Fixes are data on the finding.** Each fixable finding carries a `fix`
+(`kind`, `to`, ...) beside its `action`, set where the action is, so the edit
+is never parsed back out of a sentence. Each edit changes only its value and
+first checks that the file still holds what the scan saw. A `package.json`
+is only rewritten when it is laid out the way npm writes it.
+
+**Every run reports from the inside, and so does every fix.** The pull
+request is opened by the same scheduled pipeline, with the pipeline's own
+token, so nobody needs outside access to a repository.
+
+**Still stateless: the pull requests are the memory.** One pull request per
+kind of fix, on a branch whose name never changes, so each run finds the one
+an earlier run opened and updates it. A hidden line in its description names
+the versions it moves to; a pull request closed without merging and naming
+the same versions means "not wanted", like Dependabot's ignore. A pull
+request whose findings are gone is closed, unless its check did not run
+cleanly.
+
+**REST APIs instead of git.** Commits are made through GitHub's Git data API
+and Azure Repos' pushes API, with `fetch`. No git client, no credentials on
+disk, and the edit is made to the default branch as it is, not to whatever
+the pipeline checked out.
+
+**GitHub uses `GITHUB_TOKEN` unless `SENTINEL_FIX_TOKEN` is set.** It needs
+no setup beyond one repository setting, which was asked for ("easiest for the
+user"). Its cost: GitHub starts no workflows for pull requests it opens, so
+their checks do not run until someone pushes or reopens. A GitHub App or
+fine-grained token in `SENTINEL_FIX_TOKEN` avoids that.
+
+**Auto-merge is opt-in and waits for checks.** `fix.autoMerge` (`patch` or
+`all`) turns on the platform's own auto-merge, which merges once required
+checks or branch policies pass. A pull request is never merged directly: a
+repository without required checks gets a message, not a merge. `patch`
+means every change moves to a newer patch of the same release line; adding
+a pin or moving to another line is not a patch.
+
+**Major version moves are normal pull requests.** Moving to a new UI5 release
+line is opened like a patch; the project's own checks decide.
+
 ## Deliberately not built
 
 | Idea | Why not, or not yet |
@@ -542,6 +625,14 @@ have different formats and are not read.
 
 ## Unverified and open
 
+- **Fix pull requests were tried on one GitHub test repository only**
+  (2026-10-29: opened, and left unchanged on the next run; every group, the
+  workflow-file fallback and a refused auto-merge seen there). A successful
+  auto-merge, and a run with a `SENTINEL_FIX_TOKEN` that may change workflow
+  files, were not. The Azure DevOps
+  calls are tested against recorded shapes only, and it is assumed that the
+  build service may delete the branches it created, which is how a branch
+  left from a closed pull request starts over.
 - **Nobody has seen a real Teams card.** The payload is tested for shape, not
   for how Teams renders it.
 - **Not yet run on a customer project or in a customer pipeline.** Detection

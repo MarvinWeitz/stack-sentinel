@@ -123,11 +123,24 @@ export function evaluate(usage, lines, opts) {
   for (const f of findings) {
     if (!f.details?.recommended) continue;
     f.recommendation = `Node.js ${rec.major} is supported until ${fmt(rec.end)}`;
-    f.action ??= usage.source === 'version-file'
-      ? `Change it to "${rec.major}"`
-      : `Set "engines.node" to "^${rec.major}"`;
+    if (f.action) continue;
+    const { action, fix } = moveTo(usage, rec.major);
+    f.action = action;
+    if (fix) f.fix = fix;
   }
   return findings;
+}
+
+/** What to change, in the place the version was found, to move to Node.js `major`. */
+function moveTo(usage, major) {
+  // "20.x" stays a line range, "20" or "20.11.1" becomes the major alone
+  const like = (text) => (/\.x$/i.test(text) ? `${major}.x` : String(major));
+  switch (usage.source) {
+    case 'version-file': return { action: `Change it to "${major}"`, fix: { kind: 'node-version-file', to: String(major) } };
+    case 'ci': return { action: `Set the Node.js version in the pipeline to ${like(usage.text)}`, fix: { kind: 'node-ci', to: like(usage.text) } };
+    case 'container': return { action: `Use the node:${major}${usage.suffix ?? ''} image`, fix: { kind: 'node-container', to: String(major), suffix: usage.suffix ?? '' } };
+    default: return { action: `Set "engines.node" to "^${major}"`, fix: { kind: 'node-engines', to: `^${major}` } };
+  }
 }
 
 function judge(usage, lines, { now, requireLts, warnDays }) {
@@ -179,6 +192,8 @@ function judge(usage, lines, { now, requireLts, warnDays }) {
     const first = supported[0];
     add('warn', `${what} still allows Node.js ${lowest.major}, which reached end of life on ${fmt(lowest.end)}.`);
     findings.at(-1).action = `Raise the lowest version "engines.node" allows to ${first.major}`;
+    // only a plain lower bound can be raised without rewriting the range
+    if (usage.source === 'engines' && /^>=\s*\d+(\.\d+){0,2}$/.test(usage.text)) findings.at(-1).fix = { kind: 'node-engines', to: `>=${first.major}` };
   }
   if (requireLts && ltsAllowed.length === 0) {
     add('warn', `${what} only allows Node.js ${best.major}, which is not a long-term support release.`, recDetails(best.major));
@@ -209,11 +224,56 @@ export function parseVersionFile(text) {
   return { text: value, spec: intervals ? { kind: 'range', intervals } : null };
 }
 
+/**
+ * Node.js versions set in CI pipeline files: GitHub's actions/setup-node (node-version),
+ * Azure Pipelines' NodeTool (versionSpec) and UseNode (version). A value is only read in the
+ * step of that action or task. Expressions and lists (a build matrix) are left out.
+ * Returns [{ value, lines }] per distinct value, lines being the line indexes it is set on.
+ */
+export function versionsFromCi(text) {
+  const keyFor = (step) => (/^actions\/setup-node@/.test(step) ? 'node-version'
+    : /^NodeTool@\d+$/.test(step) ? 'versionSpec' : /^UseNode@\d+$/.test(step) ? 'version' : null);
+  const found = new Map();
+  let key = null;
+  text.split('\n').forEach((raw, i) => {
+    const line = raw.replace(/\r$/, '');
+    const step = /^\s*-?\s*(?:uses|task):\s*["']?([^"'\s#]+)/.exec(line);
+    if (step) key = keyFor(step[1]);
+    else if (/^\s*-\s/.test(line)) key = null; // the next step, without an action named
+    const m = /^\s*(node-version|versionSpec|version):\s*["']?([^"'\s#]+?)["']?\s*(#.*)?$/.exec(line);
+    if (!m || m[1] !== key || /[${[]/.test(m[2])) return;
+    if (!found.has(m[2])) found.set(m[2], []);
+    found.get(m[2]).push(i);
+  });
+  return [...found].map(([value, lines]) => ({ value, lines }));
+}
+
+/**
+ * Node.js versions of the official node image in a Dockerfile's FROM lines:
+ * [{ value: "20", suffix: "-alpine", lines }]. Tags without a version (lts, latest) are
+ * returned as such; a digest pin (node@sha256:...) is left out.
+ */
+export function versionsFromDockerfile(text) {
+  const found = new Map();
+  text.split('\n').forEach((raw, i) => {
+    const m = /^\s*FROM\s+(?:--\S+\s+)*(?:[\w.-]+(?::\d+)?\/)?(?:library\/)?node:([\w.-]+)(?:\s|$)/i.exec(raw.replace(/\r$/, ''));
+    if (!m) return;
+    const tag = /^(\d+(?:\.\d+){0,2}|lts|current|latest)(.*)$/.exec(m[1]);
+    if (!tag) return;
+    const key = `${tag[1]}\u0000${tag[2]}`;
+    if (!found.has(key)) found.set(key, { value: tag[1], suffix: tag[2], lines: [] });
+    found.get(key).lines.push(i);
+  });
+  return [...found.values()];
+}
+
 export async function detect(root, files, cfg) {
   const usages = [];
   const notes = [];
   const packageRe = new RegExp(cfg.packagePattern);
   const versionFileRe = new RegExp(cfg.versionFilePattern);
+  const ciRe = new RegExp(cfg.ciPattern);
+  const containerRe = new RegExp(cfg.containerPattern);
   const unparsed = (source, file, text) => notes.push({
     check: CHECK, severity: 'warn', source, file, version: text,
     message: `Could not understand the Node.js version "${text}".`,
@@ -223,7 +283,15 @@ export async function detect(root, files, cfg) {
   let rootVersionFile = false;
   for (const file of files) {
     const atRoot = !file.includes('/');
-    if (versionFileRe.test(file)) {
+    if (ciRe.test(file) || containerRe.test(file)) {
+      const ci = ciRe.test(file);
+      const text = await readFile(join(root, file), 'utf8');
+      for (const { value, suffix } of ci ? versionsFromCi(text) : versionsFromDockerfile(text)) {
+        const parsed = parseVersionFile(value);
+        if (parsed?.spec) usages.push({ source: ci ? 'ci' : 'container', file, ...parsed, ...(suffix ? { suffix } : {}) });
+        else unparsed(ci ? 'ci' : 'container', file, value);
+      }
+    } else if (versionFileRe.test(file)) {
       const parsed = parseVersionFile(await readFile(join(root, file), 'utf8'));
       if (!parsed) continue;
       if (atRoot) rootVersionFile = true;

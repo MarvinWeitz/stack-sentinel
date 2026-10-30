@@ -10,6 +10,32 @@ release notes.
 
 ## Unreleased
 
+- Two opt-in kinds of fix pull request that run npm to update
+  `package-lock.json` (`--package-lock-only --ignore-scripts`, in a temporary
+  folder): `cap` moves CAP packages on an old major to the current one, as a
+  draft, and `npm-audit` moves vulnerable packages that `npm audit fix` can
+  move, raising a range in `package.json` that pins them below the fix. Both
+  work with npm workspaces. Turn them on with `SENTINEL_FIX_GROUPS`.
+
+- `SENTINEL_FIX_AUTO_MERGE=patch` (or `all`) turns on auto-merge for fix
+  pull requests that only move to newer patches, so they merge once their
+  required checks pass.
+- A Cloud Foundry app that declares no Node.js version gets
+  `"engines.node"` for the line the buildpack keeps longest in the Node.js
+  fix pull request.
+- The fix for the UI5 version pins a local Fiori preview (fiori-tools-proxy)
+  that loads the latest release to the version the app builds with.
+- `node-version` also reads the Node.js version that CI pipelines set up
+  (GitHub's `actions/setup-node`, Azure Pipelines' `NodeTool` and `UseNode`)
+  and the `node` image Dockerfiles build on, and fix pull requests move them.
+- Fix pull requests, much like Dependabot: with `SENTINEL_FIX_MODE=pr` the
+  scheduled run on GitHub Actions or Azure DevOps opens one pull request per
+  kind of fix, and keeps it up to date. It changes UI5 versions in
+  `ui5.yaml`, bootstrap URLs and `manifest.json`, Node.js versions in
+  `"engines.node"`, `.nvmrc` and `.node-version`, and removes npm overrides
+  that are no longer needed. `SENTINEL_FIX_MODE=apply` changes the scanned
+  files instead, and `SENTINEL_FIX_GROUPS` chooses which kinds of fix are
+  made. Findings that can be fixed carry a `fix` in the JSON report.
 - Add contributing guide, code of conduct, security policy, issue and pull
   request templates, and Dependabot updates for GitHub Actions and the dev
   container.

@@ -1,0 +1,10 @@
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: "3.12"
+  - task: NodeTool@0
+    inputs:
+      versionSpec: "20.x"
+  - task: UseNode@1
+    inputs:
+      version: "18"

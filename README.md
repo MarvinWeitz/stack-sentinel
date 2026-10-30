@@ -106,6 +106,13 @@ its value and where it came from.
 | `scan.exclude` | `--exclude` | `SENTINEL_SCAN_EXCLUDE` | `node_modules,.git,dist,build,gen,coverage,.cache` | Folder names that are not scanned (replaces the default list) |
 | `scan.maxDepth` | `--max-depth` | `SENTINEL_SCAN_MAX_DEPTH` | `8` | How many folder levels deep to scan |
 | `notify.maxFindings` |  | `SENTINEL_NOTIFY_MAX_FINDINGS` | `25` | Most findings listed in one Teams card |
+| `fix.mode` | `--fix` | `SENTINEL_FIX_MODE` | `off` | Fix what can be fixed safely: apply changes the scanned files, pr opens a pull request per kind of fix (see [Fix pull requests](#fix-pull-requests)): `off`, `apply`, `pr` |
+| `fix.groups` | `--fix-groups` | `SENTINEL_FIX_GROUPS` | `ui5,node,npm-overrides` | Kinds of fix to make, one pull request each: ui5 (UI5 versions), node (Node.js versions), npm-overrides (npm overrides no longer needed); and, off by default, cap (CAP major upgrades, as draft pull requests) and npm-audit (vulnerable npm packages; runs npm) |
+| `fix.on` | `--fix-on` | `SENTINEL_FIX_ON` | `info` | Fix findings at or above this severity: `ok`, `info`, `warn`, `error` |
+| `fix.token` |  | `SENTINEL_FIX_TOKEN` |  | Token that opens the pull requests (default: `GITHUB_TOKEN` or `SYSTEM_ACCESSTOKEN`; not read from the config file) |
+| `fix.autoMerge` |  | `SENTINEL_FIX_AUTO_MERGE` | `off` | Let fix pull requests merge by themselves once their checks pass: patch for those that only move to a newer patch of the same version, all for every one: `off`, `patch`, `all` |
+| `fix.branchPrefix` |  | `SENTINEL_FIX_BRANCH_PREFIX` | `stack-sentinel/` | Start of the branch names of fix pull requests |
+| `fix.maxPullRequests` |  | `SENTINEL_FIX_MAX_PULL_REQUESTS` | `5` | Most fix pull requests open at the same time |
 | `ui5.feed` |  | `SENTINEL_UI5_FEED` | `https://ui5.sap.com/versionoverview.json` | Version overview feed: a URL, or a path to a downloaded copy |
 | `ui5.requireLts` |  | `SENTINEL_UI5_REQUIRE_LTS` | `true` | Warn about versions that are not long-term maintenance |
 | `ui5.warnDays` |  | `SENTINEL_UI5_WARN_DAYS` | `180` | Warn this many days before an end date |
@@ -120,6 +127,8 @@ its value and where it came from.
 | `node.requireLts` |  | `SENTINEL_NODE_REQUIRE_LTS` | `true` | Warn when only non-LTS Node.js releases are allowed |
 | `node.warnDays` |  | `SENTINEL_NODE_WARN_DAYS` | `180` | Warn this many days before end of life |
 | `node.packagePattern` |  | `SENTINEL_NODE_PACKAGE_PATTERN` | `(^\|/)package\.json$` | Files read for "engines.node" (regex on the relative path) |
+| `node.ciPattern` |  | `SENTINEL_NODE_CI_PATTERN` | `(^\|/)(\.github/workflows/[^/]+\|azure-pipelines[^/]*\|\.azure-pipelines/[^/]+)\.ya?ml$` | CI pipeline files read for the Node.js version they set up (regex on the relative path) |
+| `node.containerPattern` |  | `SENTINEL_NODE_CONTAINER_PATTERN` | `(^\|/)(Dockerfile\|Containerfile)([.-][\w.-]+)?$` | Dockerfiles read for the node image they build on (regex on the relative path) |
 | `node.versionFilePattern` |  | `SENTINEL_NODE_VERSION_FILE_PATTERN` | `(^\|/)\.(nvmrc\|node-version)$` | Files read as Node.js version files (regex on the relative path) |
 | `cf.feed` |  | `SENTINEL_CF_FEED` | `https://raw.githubusercontent.com/cloudfoundry/nodejs-buildpack/master/manifest.yml` | Manifest of the Cloud Foundry Node.js buildpack: a URL, or a path to a downloaded copy |
 | `cf.warnDays` |  | `SENTINEL_CF_WARN_DAYS` | `180` | Warn this many days before a Node.js line leaves the buildpack |
@@ -252,6 +261,85 @@ remove the variable afterwards. The last lines of the tool's output say
 whether a notification was sent, and if not, why: no webhook address reached
 the tool (usually a missing or misnamed secret), or the status was below the
 threshold.
+
+<a id="fix-pull-requests"></a>
+
+## 🔧 Fix pull requests
+
+With `SENTINEL_FIX_MODE=pr` the scheduled run also opens pull requests that
+fix what can be fixed safely, much like Dependabot. By default only edits that
+change one version in one file are made:
+
+| Check | What is changed |
+| --- | --- |
+| `ui5-version` | `framework.version` and the fiori-tools-proxy `ui5.version` in `ui5.yaml`, the version in CDN bootstrap URLs (a version is added where none is set), and `"sap.platform.cf".ui5VersionNumber` in `manifest.json` (added where it is missing). A fiori-tools-proxy without a version gets the one the app builds with (`framework.version` in a `ui5*.yaml` of the same folder), or else the recommended one |
+| `node-version`, `cf-node-version` | The Node.js version in CI pipelines (`setup-node`, `NodeTool`, `UseNode`) and in `FROM node:<tag>` is moved to the recommended major. `.nvmrc` and `.node-version` are set to the recommended Node.js major, `"engines.node"` to `^<major>`, a plain lower bound such as `>=18` is raised, an exact version on Cloud Foundry (`22.11.0`) becomes a range the buildpack can stage (`22.x`), and a Cloud Foundry app that declares none gets `"engines.node"` for the line the buildpack keeps longest. Where the two checks disagree, the version the Cloud Foundry buildpack ships wins |
+| `npm-audit` | Overrides in `package.json` that are unused or no longer needed are removed |
+
+Two more kinds run npm to bring `package-lock.json` up to date, and are only
+made when `fix.groups` names them:
+
+| Group | What is changed |
+| --- | --- |
+| `cap` | A CAP package (`cap-version`) on an old major moves to `^<current major>` in `package.json`, and the lockfile next to it is updated with `npm install --package-lock-only --ignore-scripts`. It opens as a **draft**, as a new major can need code changes (see the [CAP release notes](https://cap.cloud.sap/docs/releases/)) |
+| `npm-audit` | Vulnerable packages that `npm audit fix` can move on its own, after raising a range the project's own `package.json` pins below the fix to the oldest published release that fixes it (`"lodash": "4.17.20"` becomes `"4.18.0"`), are moved with `npm install` and `npm audit fix`, both with `--package-lock-only --ignore-scripts`. A package that a dependency's own range or a bundled copy holds back is left to a person, and so is a package npm did not move |
+
+npm runs in a temporary folder with only `package-lock.json`, `.npmrc` and
+the `package.json` files the lockfile covers (the project's and those of its
+npm workspaces), so no packages are installed and no package scripts run. It
+needs `npm` on the path and access to the registry, as an `npm install` has.
+
+Nothing else is changed automatically: not `minUI5Version`, which states
+which versions an app supports, and not a missing `"engines.node"` outside
+Cloud Foundry, which would be a guess.
+
+- **One pull request per kind of fix**, on a branch whose name never changes
+  (`stack-sentinel/ui5`, `stack-sentinel/node`, `stack-sentinel/npm-overrides`, `stack-sentinel/cap`,
+  `stack-sentinel/npm-audit`). Each run updates it
+  while the findings remain, for example to a newer patch, and closes it when
+  they are gone.
+- **Closing a pull request without merging** skips those versions: the next
+  run opens a new one only when there is a newer version to move to.
+- **The edits are made to the default branch** as it is at the time of the
+  run. A change whose file no longer holds the version the scan saw is left
+  out.
+- **Choose what is fixed** with `fix.groups`: `SENTINEL_FIX_GROUPS=ui5`
+  fixes UI5 versions only, and leaves npm overrides to be reported;
+  `SENTINEL_FIX_GROUPS=ui5,node,npm-overrides,cap,npm-audit` turns on all of
+  them. A pull request of a kind that is turned off is left open as it is.
+- **Workflow files on GitHub** (`.github/workflows/*.yml`) can only be
+  changed by a token with the "Workflows" permission, which `GITHUB_TOKEN`
+  cannot have. Without one, they are left out of the pull request, which
+  says so, and the rest goes through.
+- **Auto-merge** is off by default. `SENTINEL_FIX_AUTO_MERGE=patch` turns it
+  on for pull requests that only move to newer patches (UI5 1.148.12 to
+  1.148.13), `all` for every one. The pull request is then merged once its
+  required checks pass, never before: on GitHub this needs "Allow
+  auto-merge" and a branch protection rule with required checks, and since
+  checks do not start for pull requests opened with `GITHUB_TOKEN`, a
+  `SENTINEL_FIX_TOKEN`. On Azure DevOps it sets the pull request to complete
+  by itself once its branch policies pass. If it cannot be turned on, the
+  pull request stays open and the output says why. Draft pull requests
+  (`cap`) are never set to merge.
+- **At most `fix.maxPullRequests`** (default 5) are open at a time.
+- **Moving to a new release line** (UI5 1.120 to 1.148, Node.js 20 to 24) is a normal pull
+  request too. The project's own checks on the pull request are what show
+  whether the app still works.
+- The links to the pull requests are on the Teams card and in the JSON report
+  (`pullRequests`).
+- `SENTINEL_FIX_MODE=apply` (or `--fix apply`) only changes the files in the
+  scanned folder, for a local run or a pipeline of your own.
+
+| | GitHub Actions | Azure DevOps (Azure Repos) |
+| --- | --- | --- |
+| Turn it on | Variable `SENTINEL_FIX_MODE` = `pr` | Pipeline variable `SENTINEL_FIX_MODE` = `pr` |
+| Allow it once | Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" | Project settings → Repositories → the repository → Security → the project's build service: "Contribute" and "Contribute to pull requests" |
+| Token | The workflow's own `GITHUB_TOKEN`; nothing to set | `$(System.AccessToken)`, mapped in the example |
+| The pull request's checks | GitHub starts no workflows for pull requests opened with `GITHUB_TOKEN`. To have them run, set the secret `SENTINEL_FIX_TOKEN` to a GitHub App token or a fine-grained personal access token with "Contents" and "Pull requests" write access | Run as usual |
+| An open pull request after the default branch moved | Rebuilt on top of the default branch | Gets a commit on top, because pipelines may not force-push |
+
+The examples already carry the permissions and the token mapping, so turning
+it on needs no change to the pipeline file.
 
 <a id="heartbeat"></a>
 

@@ -124,7 +124,7 @@ export function evaluate(usage, index, { now, requireLts, warnDays, maintenanceD
     add('error', `UI5 ${key} is not listed in the version overview; treat it as out of maintenance.`, recDetails);
     if (useRec) {
       findings[0].recommendation = rec.text;
-      findings[0].action = ui5Action(usage.kind, rec.key, index.latestPatch.get(rec.key), usage.host);
+      act(findings[0], usage.kind, rec.key, index.latestPatch.get(rec.key), usage.host);
     }
     return findings;
   }
@@ -167,18 +167,18 @@ export function evaluate(usage, index, { now, requireLts, warnDays, maintenanceD
     }
     // A patch problem on a line that is still maintained is fixed by its newest patch.
     for (const f of findings) {
-      if (newerPatch && !f.details?.recommended && f.message.includes(full)) f.action = ui5Action(usage.kind, key, latest, usage.host);
+      if (newerPatch && !f.details?.recommended && f.message.includes(full)) act(f, usage.kind, key, latest, usage.host);
     }
   }
 
   for (const f of findings) {
     if (f.details?.recommended) {
       f.recommendation = rec.text;
-      f.action = ui5Action(usage.kind, rec.key, index.latestPatch.get(rec.key), usage.host);
+      act(f, usage.kind, rec.key, index.latestPatch.get(rec.key), usage.host);
     } else if (!f.action && useRec && /removed from the SAP CDN|cloud provisioning/.test(f.message)) {
       // the patch is gone and the whole line should be left: move to the recommended line
       f.recommendation = rec.text;
-      f.action = ui5Action(usage.kind, rec.key, index.latestPatch.get(rec.key), usage.host);
+      act(f, usage.kind, rec.key, index.latestPatch.get(rec.key), usage.host);
     }
   }
 
@@ -192,13 +192,17 @@ export function evaluate(usage, index, { now, requireLts, warnDays, maintenanceD
 
 /** Finds `framework: { version }` in a ui5.yaml without a YAML dependency. */
 export function versionFromUi5Yaml(text) {
-  const lines = text.split(/\r?\n/);
+  return frameworkVersionLine(text.split(/\r?\n/))?.version ?? null;
+}
+
+/** The line of a ui5.yaml that holds framework.version: { index, version }, or null. */
+export function frameworkVersionLine(lines) {
   for (let i = 0; i < lines.length; i++) {
     if (!/^framework:\s*(#.*)?$/.test(lines[i])) continue;
     for (let j = i + 1; j < lines.length; j++) {
       if (/^\S/.test(lines[j])) break; // left the framework block
       const m = /^\s+version:\s*["']?([^"'\s#]+)/.exec(lines[j]);
-      if (m) return m[1];
+      if (m) return { index: j, version: m[1] };
     }
   }
   return null;
@@ -213,7 +217,16 @@ export function versionFromUi5Yaml(text) {
  * file has no such block.
  */
 export function previewFromUi5Yaml(text) {
-  const lines = text.split(/\r?\n/);
+  const found = previewVersionLine(text.split(/\r?\n/));
+  return found && { version: found.version };
+}
+
+/**
+ * Where previewFromUi5Yaml finds its answer: { index, version, block }, where index is the line
+ * of the version (null when there is none; version is null when it is not a version too) and
+ * block the line of "ui5:", or null when there is no fiori-tools-proxy ui5 block.
+ */
+export function previewVersionLine(lines) {
   const indent = (line) => line.length - line.trimStart().length;
   const start = lines.findIndex((l) => /^\s*-?\s*name:\s*["']?fiori-tools-proxy["']?\s*$/.test(l));
   if (start === -1) return null;
@@ -225,9 +238,9 @@ export function previewFromUi5Yaml(text) {
       if (lines[j].trim() === '' || lines[j].trim().startsWith('#')) continue;
       if (indent(lines[j]) <= depth) break;
       const m = /^\s+version:\s*["']?([^"'\s#]*)/.exec(lines[j]);
-      if (m) return { version: VERSION_RE.test(m[1]) ? m[1] : null };
+      if (m) return { index: j, version: VERSION_RE.test(m[1]) ? m[1] : null, block: i };
     }
-    return { version: null };
+    return { index: null, version: null, block: i };
   }
   return null;
 }
@@ -260,6 +273,34 @@ export function ui5Action(kind, line, patch, host = 'ui5.sap.com') {
     case 'deployed': return `Upgrade the system to UI5 ${line}`;
     default: return undefined;
   }
+}
+
+/**
+ * The same change as ui5Action, as data that src/fix can apply to the file: { kind, to, host? }.
+ * Only places that are a version in a file the project owns; minUI5Version is a statement
+ * of support, not a version to move, so it is never changed automatically.
+ */
+export function ui5Fix(kind, line, patch, host) {
+  switch (kind) {
+    case 'framework':
+    case 'preview':
+      return patch === undefined ? undefined : { kind: `ui5-${kind}`, to: `${line}.${patch}` };
+    case 'bootstrap':
+      return patch === undefined ? undefined : { kind: 'ui5-bootstrap', to: `${line}.${patch}`, host };
+    case 'workzone':
+    case 'workzone-missing':
+      return { kind: `ui5-${kind}`, to: `${line}.x` };
+    default:
+      return undefined;
+  }
+}
+
+/** Sets a finding's action and the fix that carries it out. */
+function act(finding, kind, line, patch, host) {
+  finding.action = ui5Action(kind, line, patch, host);
+  const fix = ui5Fix(kind, line, patch, host);
+  if (fix) finding.fix = fix;
+  else delete finding.fix;
 }
 
 /**
@@ -343,6 +384,7 @@ export const ui5Check = {
     const cfg = ctx.config.ui5;
     const { usages, notes } = await detect(ctx.root, ctx.files, cfg);
     const findings = [...notes];
+    const previews = notes.filter((n) => n.local && n.source === 'preview');
 
     // Running systems: each probe URL must return JSON with a top-level "version"
     // (the shape of <ui5-root>/resources/sap-ui-version.json).
@@ -376,7 +418,7 @@ export const ui5Check = {
         if (note.local) continue;
         note.recommendation = rec.text;
         note.details = { recommended: rec.key };
-        note.action = ui5Action(note.source === 'workzone' ? 'workzone-missing' : note.source, rec.key, index.latestPatch.get(rec.key), note.host);
+        act(note, note.source === 'workzone' ? 'workzone-missing' : note.source, rec.key, index.latestPatch.get(rec.key), note.host);
       }
     }
     for (const note of notes) {
@@ -384,6 +426,28 @@ export const ui5Check = {
       delete note.host;
     }
     for (const usage of usages) findings.push(...evaluate(usage, index, opts));
+    const latest = rec && index.latestPatch.has(rec.key) ? `${rec.key}.${index.latestPatch.get(rec.key)}` : null;
+    for (const note of previews) pinPreview(note, usages, findings, latest);
     return findings;
   },
 };
+
+/**
+ * A local preview that loads the latest release is pinned to the version the app builds with:
+ * framework.version in a ui5*.yaml of the same folder (SAP Fiori tools keeps it in
+ * ui5-local.yaml), after any change the findings make to it, so the two stay alike. Without
+ * one it is pinned to `latest`, the newest patch of the recommended version.
+ */
+function pinPreview(note, usages, findings, latest) {
+  const dir = (file) => file.replace(/[^/]*$/, '');
+  const later = (a, b) => {
+    const [pa, pb] = [parseVersion(a), parseVersion(b)];
+    return pa.major - pb.major || pa.minor - pb.minor || (pa.patch ?? 0) - (pb.patch ?? 0);
+  };
+  const frameworks = usages.filter((u) => u.kind === 'framework' && dir(u.file) === dir(note.file));
+  const built = frameworks.map((u) => findings.find((f) => f.file === u.file && f.fix?.kind === 'ui5-framework')?.fix.to ?? u.version);
+  const to = built.filter((v) => parseVersion(v)?.patch != null).sort(later).at(-1) ?? latest;
+  if (!to) return;
+  note.action = `Set the version in the fiori-tools-proxy ui5 block to ${to}${frameworks.length ? ', the version the app builds with' : ''}`;
+  note.fix = { kind: 'ui5-preview-missing', to };
+}

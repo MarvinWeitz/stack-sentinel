@@ -172,6 +172,7 @@ export function evaluate(lockfile, packages, advisories, cfg, graph) {
     const count = hits.length === 1 ? 'a known vulnerability' : `${hits.length} known vulnerabilities`;
     const devNote = pkg.dev ? ' (development dependency)' : '';
     const origin = graph ? explain(graph, lockfile, pkg) : null;
+    const fixed = firstFixedVersion(version, hits);
     findings.push({
       check: CHECK,
       severity,
@@ -179,7 +180,8 @@ export function evaluate(lockfile, packages, advisories, cfg, graph) {
       file: lockfile,
       version: pkg.version,
       message: `${pkg.name} ${pkg.version}${devNote} has ${count}, the worst ${worst.severity}: ${titles.slice(0, 2).join('; ')}${titles.length > 2 ? `; and ${titles.length - 2} more` : ''}.${origin?.message ?? ''}`,
-      action: origin ? graphFixAction(origin, pkg, firstFixedVersion(version, hits), lockfile) : fixAction(pkg, version, hits, lockfile),
+      action: origin ? graphFixAction(origin, pkg, fixed, lockfile) : fixAction(pkg, version, hits, lockfile),
+      ...(origin && fixed ? lockfileFix(origin, pkg, fixed, lockfile) : {}),
       details: {
         package: pkg.name,
         severity: worst.severity,
@@ -237,6 +239,29 @@ function explain(graph, lockfile, pkg) {
     };
   });
   return { graph, targets, routes, label, message, introducedBy };
+}
+
+/** The new range for a package.json that asks for `range`, in the same style: exact, ~ or ^. */
+const raisedRange = (range, fixed) => (/^\d/.test(range) ? fixed : /^~/.test(range) ? `~${fixed}` : `^${fixed}`);
+
+/**
+ * What "npm audit fix" can do on its own, as a fix for the fix pull requests: move the
+ * package within the ranges that ask for it, after raising the ranges the project's own
+ * package.json files set (the project's, or a workspace's). Nothing when a dependency's
+ * own range or a bundled copy stands in the way; those need a person.
+ */
+function lockfileFix({ graph, targets }, pkg, fixed, lockfile) {
+  if (targets.some((t) => graph.nodes.get(t).bundled)) return {};
+  const raise = [];
+  for (const path of targets) {
+    for (const edge of graph.parents.get(path) ?? []) {
+      const range = parseRange(edge.range);
+      if (!range || satisfies(range, parts(fixed))) continue;
+      if (!graph.roots.has(edge.from)) return {};
+      if (!raise.some((r) => r.from === edge.range)) raise.push({ manifest: manifestOf(lockfile, edge.from), from: edge.range, to: raisedRange(edge.range, fixed) });
+    }
+  }
+  return { fix: { kind: 'npm-audit', name: pkg.name, to: fixed, ...(raise.length ? { raise } : {}) } };
 }
 
 /**
@@ -304,20 +329,21 @@ function fixAction(pkg, version, hits, lockfile) {
 /**
  * The entries of a package.json "overrides" field: plain ones ("pkg": "spec", also with a
  * "pkg@range" key) and those scoped one level under a parent ("parent": { "pkg": "spec" },
- * where "." is the parent itself). Returns [{ name, parent, key }]; key names the entry for
- * the action, e.g. "proxy-addr" or "express" > "proxy-addr".
+ * where "." is the parent itself). Returns [{ name, parent, key, path }]; key names the entry
+ * for the action, e.g. "proxy-addr" or "express" > "proxy-addr", and path is where it sits
+ * in "overrides", e.g. ["express", "proxy-addr"].
  */
 export function overrideEntries(overrides) {
   const nameOf = (key) => (key.lastIndexOf('@') > 0 ? key.slice(0, key.lastIndexOf('@')) : key);
   const out = [];
   for (const [key, value] of Object.entries(overrides ?? {})) {
     if (typeof value === 'string') {
-      out.push({ name: nameOf(key), parent: null, key: `"${key}"` });
+      out.push({ name: nameOf(key), parent: null, key: `"${key}"`, path: [key] });
     } else if (value && typeof value === 'object') {
       for (const [child, spec] of Object.entries(value)) {
         if (typeof spec !== 'string') continue; // deeper nesting is not judged
-        if (child === '.') out.push({ name: nameOf(key), parent: null, key: `"${key}"` });
-        else out.push({ name: nameOf(child), parent: nameOf(key), key: `"${child}" under "${key}"` });
+        if (child === '.') out.push({ name: nameOf(key), parent: null, key: `"${key}"`, path: [key, child] });
+        else out.push({ name: nameOf(child), parent: nameOf(key), key: `"${child}" under "${key}"`, path: [key, child] });
       }
     }
   }
@@ -349,7 +375,11 @@ export function unneededOverrides(lockfile, graph, overrides) {
   };
   const findings = [];
   for (const entry of overrideEntries(overrides)) {
-    const base = { check: CHECK, severity: 'info', source: 'overrides', file: manifest, details: { override: entry.key, package: entry.name } };
+    const base = {
+      check: CHECK, severity: 'info', source: 'overrides', file: manifest,
+      details: { override: entry.key, package: entry.name },
+      fix: { kind: 'npm-override-remove', path: entry.path },
+    };
     const remove = `Remove ${entry.key} from "overrides" in ${manifest}, then run "npm install" in ${folder(lockfile)}`;
     const targets = [...graph.nodes.values()]
       .filter((n) => !graph.roots.has(n.path) && n.name === entry.name && (!entry.parent || below(n.path, entry.parent)))

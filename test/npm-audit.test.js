@@ -148,10 +148,10 @@ test('workspaces and lockfile version 1 are traced too', () => {
 
 test('reads plain and scoped overrides', () => {
   assert.deepEqual(overrideEntries({ a: '1.0.0', '@s/b@^1': '1.2.0', c: { '.': '2.0.0', d: '3.0.0', e: { f: '1.0.0' } } }), [
-    { name: 'a', parent: null, key: '"a"' },
-    { name: '@s/b', parent: null, key: '"@s/b@^1"' },
-    { name: 'c', parent: null, key: '"c"' },
-    { name: 'd', parent: 'c', key: '"d" under "c"' },
+    { name: 'a', parent: null, key: '"a"', path: ['a'] },
+    { name: '@s/b', parent: null, key: '"@s/b@^1"', path: ['@s/b@^1'] },
+    { name: 'c', parent: null, key: '"c"', path: ['c', '.'] },
+    { name: 'd', parent: 'c', key: '"d" under "c"', path: ['c', 'd'] },
   ]);
   assert.deepEqual(overrideEntries(undefined), []);
 });
@@ -216,4 +216,20 @@ test('scans every lockfile, asks the registry once per lockfile, and reports a c
 
   const broken = await scan({ root: fixture('audit-app'), config: { checks: ['npm-audit'] }, postJsonImpl: async () => [1] });
   assert.match(broken.findings[0].message, /Check failed to run: the registry gave an unexpected answer/);
+});
+
+test('a fix for the fix pull requests only where npm can do it alone, after raising the project\'s own range', () => {
+  const findings = madeFindings('apps/orders/package-lock.json');
+  assert.deepEqual(byName(findings, 'loose').fix, { kind: 'npm-audit', name: 'loose', to: '2.0.5' });
+  assert.equal(byName(findings, 'vuln').fix, undefined); // router stands in the way
+  assert.equal(byName(findings, 'packed').fix, undefined); // bundled
+  const pinned = (range) => ({ lockfileVersion: 3, packages: { '': { dependencies: { vuln: range } }, 'node_modules/vuln': { version: '1.0.0' } } });
+  const fixOf = (range) => evaluate('a/package-lock.json', installedPackages(pinned(range)), madeAdvisories, policy, dependencyGraph(pinned(range)))[0].fix;
+  assert.deepEqual(fixOf('1.0.0'), { kind: 'npm-audit', name: 'vuln', to: '1.1.0', raise: [{ manifest: 'a/package.json', from: '1.0.0', to: '1.1.0' }] });
+  assert.equal(fixOf('~1.0.0').raise[0].to, '~1.1.0');
+  assert.equal(fixOf('>=1.0.0 <1.1.0').raise[0].to, '^1.1.0');
+  // a workspace's own package.json is raised like the project's
+  const workspaces = { lockfileVersion: 3, packages: { '': { workspaces: ['p'] }, p: { name: 'p', version: '1.0.0', dependencies: { vuln: '1.0.0' } }, 'node_modules/p': { link: true, resolved: 'p' }, 'node_modules/vuln': { version: '1.0.0' } } };
+  assert.deepEqual(evaluate('package-lock.json', installedPackages(workspaces), madeAdvisories, policy, dependencyGraph(workspaces))[0].fix,
+    { kind: 'npm-audit', name: 'vuln', to: '1.1.0', raise: [{ manifest: 'p/package.json', from: '1.0.0', to: '1.1.0' }] });
 });
