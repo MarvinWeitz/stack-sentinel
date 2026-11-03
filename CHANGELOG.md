@@ -8,7 +8,7 @@ version and the date. The tests fail while the version in `package.json` has
 no entry here, and the Release workflow publishes the entry as the GitHub
 release notes.
 
-## Unreleased
+## 0.4.0 - 2026-11-03
 
 - `SENTINEL_DASHBOARD_ENABLED=true` keeps one GitHub issue or Azure DevOps
   work item per repository up to date with the latest findings, the open fix
