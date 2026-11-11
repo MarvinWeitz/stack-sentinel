@@ -6,7 +6,8 @@ name: Release
 # npm accepts the upload because this workflow is registered as the package's trusted
 # publisher on npmjs.com (package settings -> Trusted publishing: GitHub Actions,
 # organization cbs-consulting, repository stack-sentinel, workflow release.yml, permission
-# "stage publish"), so no npm token is stored here.
+# "stage publish", environment npm), so no npm token is stored here. npm only accepts uploads
+# from a job that runs in the GitHub environment "npm", which is why the job below names it.
 #
 # The workflow can be run again; whatever was already done is skipped. A version that is
 # staged but not yet approved does not count as done, so approve or reject it first.
@@ -26,6 +27,7 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: npm
     steps:
       - uses: actions/checkout@v7
         with:
