@@ -1,0 +1,13 @@
+{
+  "name": "stack-sentinel",
+  "version": "0.4.0",
+  "description": "Sets up @cbs-consulting/stack-sentinel in SAP UI5, CAP and Node.js projects: the weekly scan pipeline on GitHub Actions or Azure DevOps, Teams reports, fix pull requests and ignore rules.",
+  "author": {
+    "name": "cbs Corporate Business Solutions Unternehmensberatung GmbH",
+    "email": "cp_opensource@cbs-consulting.de"
+  },
+  "homepage": "https://github.com/cbs-consulting/stack-sentinel#readme",
+  "repository": "https://github.com/cbs-consulting/stack-sentinel",
+  "license": "Apache-2.0",
+  "keywords": ["sap", "ui5", "cap", "cloud-foundry", "nodejs", "end-of-life", "monitoring", "teams"]
+}

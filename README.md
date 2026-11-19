@@ -482,6 +482,42 @@ the gap.
   to `GET` (no message is sent then, only the ping). Uptime Kuma 2.x accepts
   POST.
 
+<a id="agents"></a>
+
+## 🤖 AI coding agents
+
+The repository ships an [agent skill](skills/stack-sentinel/SKILL.md) that
+teaches coding agents such as Claude Code, Codex or GitHub Copilot to set
+stack-sentinel up in a project: it runs a first scan, adds the pipeline
+example unchanged, and gives the user a short list of the variables, secrets
+and permissions to set, with the exact names and where to click. It also
+knows why a run sent no card or opened no pull request, and how to ignore a
+finding with a reason and an end date. It never writes the webhook address
+or a token into a file.
+
+The repository is a plugin in the
+[cbs Agentic Marketplace](https://github.com/cbs-consulting/agentic-marketplace),
+so the skill installs once for all projects:
+
+```text
+/plugin marketplace add cbs-consulting/agentic-marketplace     # Claude Code
+/plugin install stack-sentinel@cbs-consulting
+```
+
+```sh
+copilot plugin marketplace add cbs-consulting/agentic-marketplace  # GitHub Copilot CLI
+copilot plugin install stack-sentinel@cbs-consulting
+codex plugin marketplace add cbs-consulting/agentic-marketplace    # Codex, then /plugins
+```
+
+Other agents that read the [Agent Skills](https://agentskills.io) format get
+it with `npx skills add cbs-consulting/stack-sentinel`, or by copying
+[`skills/stack-sentinel/`](skills/stack-sentinel/) into their skills folder.
+Then ask the agent to "set up stack-sentinel for this project".
+
+The plugin follows the default branch of this repository. A test checks that
+the skill names only settings and flags the tool has.
+
 <a id="releases"></a>
 
 ## 📌 Releases
@@ -511,7 +547,8 @@ Releases are made by the "Release" workflow in the Actions tab, which
 Every change goes into the "Unreleased" section of `CHANGELOG.md` in its
 pull request. The "Changelog entry" check fails on pull requests that do not
 change `CHANGELOG.md`; give those that change nothing a user notices (chores,
-CI, typos) the label "no changelog". To prepare a release, raise the version in `package.json` and
+CI, typos) the label "no changelog". To prepare a release, raise the version in `package.json` (and in
+`plugin.json` and `.claude-plugin/plugin.json`, which a test checks) and
 rename "Unreleased" to `<version> - <date>`. The tests fail while the version
 in `package.json` has no entry, so neither the pull request nor the release
 can go through without one.

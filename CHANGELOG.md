@@ -8,6 +8,16 @@ version and the date. The tests fail while the version in `package.json` has
 no entry here, and the Release workflow publishes the entry as the GitHub
 release notes.
 
+## Unreleased
+
+- New agent skill for AI coding agents such as Claude Code, Codex and GitHub
+  Copilot. It sets stack-sentinel up in a project: a first scan, the pipeline
+  example, and a short list of the variables, secrets and permissions the
+  user sets. It also explains why a run sent no card or opened no fix pull
+  request. The repository is now an agent plugin (`plugin.json`), so the skill
+  installs from the cbs Agentic Marketplace with
+  `/plugin install stack-sentinel@cbs-consulting`.
+
 ## 0.4.0 - 2026-11-03
 
 - `SENTINEL_DASHBOARD_ENABLED=true` keeps one GitHub issue or Azure DevOps
