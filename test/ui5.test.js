@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { evaluate, indexFeed, previewFromUi5Yaml, recommend, normaliseStatus, parseQuarter, readManifest, versionFromUi5Yaml, versionsFromHtml } from '../src/checks/ui5.js';
+import { evaluate, frameworkName, hostUi5Type, indexFeed, previewFromUi5Yaml, recommend, normaliseStatus, parseQuarter, readManifest, versionFromUi5Yaml, versionsFromHtml } from '../src/checks/ui5.js';
 import { selectChecks } from '../src/checks/index.js';
 import { scan } from '../src/cli.js';
 import { teamsPayload } from '../src/notifiers/webhook.js';
@@ -304,4 +304,21 @@ test('the action depends on where the version was found', async () => {
     { severity: 'error', message: 'UI5 1.108 is out of maintenance.', file: 'c/index.html', action: 'Load a fixed version: x' },
   ]);
   assert.deepEqual(groups.map((g) => [g.files.length, g.action]), [[2, 'Set framework.version to 1.148.12'], [1, 'Load a fixed version: x']]);
+});
+
+test('knows whether a version is SAPUI5 or OpenUI5, for the link to the changes in a fix pull request', async () => {
+  assert.equal(frameworkName('framework:\n  name: OpenUI5\n  version: "1.120.5"\n'), 'OpenUI5');
+  assert.equal(frameworkName('framework:\n  version: "1.120.5"\n  name: "SAPUI5"\n'), 'SAPUI5');
+  // a library's name is not the framework's
+  assert.equal(frameworkName('framework:\n  version: "1.120.5"\n  libraries:\n    - name: sap.m\n      name: OpenUI5\n'), null);
+  assert.equal(frameworkName('metadata:\n  name: OpenUI5\n'), null);
+  assert.equal(hostUi5Type('sdk.openui5.org'), 'OpenUI5');
+  assert.equal(hostUi5Type('ui5.sap.com'), 'SAPUI5');
+  const fix = (usage) => evaluate({ file: 'f', version: '1.108.56', ...usage }, index, policy).find((f) => f.fix).fix;
+  assert.deepEqual(fix({ kind: 'framework', ui5Type: 'OpenUI5' }), { kind: 'ui5-framework', to: '1.148.12', ui5Type: 'OpenUI5' });
+  // the fixture app: SAPUI5 in ui5.yaml, and a bootstrap from the SAPUI5 CDN
+  const report = await scan({ root: fixture('app'), now, fetchJsonImpl: async () => feed });
+  const types = report.findings.filter((f) => f.fix).map((f) => [f.source, f.fix.ui5Type]);
+  assert.ok(types.length > 0);
+  for (const [source, type] of types) assert.equal(type, 'SAPUI5', source);
 });

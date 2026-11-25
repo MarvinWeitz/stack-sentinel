@@ -680,7 +680,10 @@ turns it off.
 **Release notes come from where each project publishes them.** Renovate and
 Dependabot put release notes in their pull requests, which is what makes a
 pull request reviewable without leaving it. UI5, Node.js and CAP publish
-change logs at fixed addresses, so those are links. npm packages have no
+change logs at fixed addresses, so those are links. A UI5 change log covers
+one release; a move across many releases also links UI5 Lib Diff, which lists
+the features, fixes and deprecations of every release in between. It is a
+community site, so it is a link only and nothing is read from it. npm packages have no
 common place; GitHub releases are the most common, found through the
 `repository` field of the package's latest version. Their text is someone
 else's: mentions and issue references are broken, and GitHub links go

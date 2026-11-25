@@ -1,6 +1,7 @@
 /**
  * Release notes for a fix pull request, so whoever reviews it sees what changes without
- * looking it up. UI5 and Node.js get links to their change logs; npm packages get the
+ * looking it up. UI5 gets links to its change log and to the changes between the old and
+ * the new version in UI5 Lib Diff; Node.js gets a link to its change log; npm packages get the
  * advisories they fix and, when the package's repository is on GitHub, the release notes
  * published there between the old and the new version. Nothing here may stop a pull request:
  * whatever cannot be read becomes a link.
@@ -54,6 +55,24 @@ async function githubReleases(name, from, to, { fetchJson, registry }) {
   return { link, releases };
 }
 
+/** "1.120" and "1.136.x" as the release UI5 Lib Diff can show: "1.120.0", "1.136.0". */
+const diffVersion = (v) => {
+  const m = /^(\d+)\.(\d+)(?:\.(\d+|x))?$/.exec(String(v ?? ''));
+  return m ? `${m[1]}.${m[2]}.${m[3] && m[3] !== 'x' ? m[3] : 0}` : null;
+};
+
+/**
+ * A link to the changes between two UI5 versions in UI5 Lib Diff (ui5-lib-diff.marianzeis.de),
+ * which lists the features, fixes and deprecations of every release in between; null when
+ * `to` is not later than `from`. `ui5Type` is "SAPUI5" or "OpenUI5".
+ */
+export function ui5DiffLink(from, to, ui5Type = 'SAPUI5') {
+  const [a, b] = [diffVersion(from), diffVersion(to)];
+  if (!a || !b || compare(exact(a), exact(b)) >= 0) return null;
+  const query = new URLSearchParams({ versionFrom: a, versionTo: b, ui5Type });
+  return { from: a, to: b, ui5Type, url: `https://ui5-lib-diff.marianzeis.de/?${query}` };
+}
+
 /**
  * The "Release notes" part of a pull request description, as lines; empty when there is
  * nothing to say. `withBodies: false` gives links only (Azure DevOps allows 4000 characters
@@ -67,6 +86,15 @@ export async function releaseNotes(group, applied, { fetchJson, registry = 'http
       lines.push(t.endsWith('.x')
         ? `- [SAPUI5 change log](https://ui5.sap.com/#/releasenotes.html) for ${t}`
         : `- [SAPUI5 ${t} change log](https://ui5.sap.com/${t}/#/releasenotes.html)`);
+    }
+    const diffs = new Map();
+    for (const { finding } of applied) {
+      const diff = ui5DiffLink(finding.version, finding.fix.to, finding.fix.ui5Type);
+      if (diff) diffs.set(diff.url, diff);
+    }
+    const order = (x, y) => x.ui5Type.localeCompare(y.ui5Type) || compare(exact(x.from), exact(y.from)) || compare(exact(x.to), exact(y.to));
+    for (const d of [...diffs.values()].sort(order)) {
+      lines.push(`- [Changes in ${d.ui5Type} from ${d.from} to ${d.to}](${d.url}) (UI5 Lib Diff)`);
     }
   } else if (group.id === 'node') {
     const majors = [...new Set(applied.map((c) => /\d+/.exec(c.finding.fix.to)?.[0]).filter(Boolean))].sort((a, b) => a - b);
