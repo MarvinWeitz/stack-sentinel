@@ -10,6 +10,11 @@ release notes.
 
 ## 0.5.0 - 2026-11-25
 
+- The `cf-node-version` check handles a Node.js line that the Cloud Foundry
+  buildpack ships before it announces the line's removal date, as it does
+  now with Node.js 26. It recommends that line as the one to move to, and no
+  longer warns about an older line's removal date when the range also allows
+  the new one.
 - A pull request that updates UI5 links the changes between the old and the
   new version in UI5 Lib Diff (ui5-lib-diff.marianzeis.de), for SAPUI5 or
   OpenUI5 as the app uses it.

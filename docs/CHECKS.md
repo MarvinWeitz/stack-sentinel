@@ -82,7 +82,8 @@ Checks that Node.js apps deployed to Cloud Foundry ask for a version the
 Node.js buildpack ships. It reads the buildpack's manifest
 (`https://raw.githubusercontent.com/cloudfoundry/nodejs-buildpack/master/manifest.yml`),
 which lists the Node.js versions included and the date each version line is
-removed. SAP BTP uses this buildpack.
+removed. SAP BTP uses this buildpack. A new line often ships before its
+removal date is listed; the check treats it as the line that stays longest.
 
 The check applies only to projects with a deployment descriptor:
 

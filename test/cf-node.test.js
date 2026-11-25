@@ -66,6 +66,16 @@ test('warns before the last matching line leaves the buildpack', () => {
   assert.deepEqual(sev(judge('22.x', { now: new Date('2027-06-01T00:00:00Z') })), ['warn']);
 });
 
+test('a newly shipped line without a removal date is the one to move to, and has no deadline', () => {
+  const withNew = { ...buildpack, versions: [...buildpack.versions, [26, 13, 1]] };
+  const later = new Date('2028-03-01T00:00:00Z');
+  const judgeNew = (range) => evaluate({ file: 'package.json', source: 'mta', modules: ['srv'], range }, withNew, { now: later, warnDays: 180 });
+  assert.deepEqual(sev(judgeNew('>=22')), ['ok']);
+  const old = judgeNew('24.x');
+  assert.deepEqual(sev(old), ['warn']);
+  assert.equal(old[0].fix.to, '^26');
+});
+
 test('no declared version means the buildpack default, reported as info', () => {
   const none = judge(null);
   assert.deepEqual(sev(none), ['info']);

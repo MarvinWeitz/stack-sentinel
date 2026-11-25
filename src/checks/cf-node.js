@@ -156,9 +156,11 @@ export function evaluate(usage, buildpack, { now, warnDays }) {
   const findings = [];
   const add = (severity, message, details) => findings.push({ ...base, severity, message, ...(details ? { details } : {}) });
   const ships = `The current Cloud Foundry Node.js buildpack ships ${list(buildpack.versions.map(show))}.`;
-  // The line to move to: the shipped one that stays in the buildpack longest.
+  // The line to move to: the shipped one that stays in the buildpack longest. A line without a
+  // removal date is new, and the buildpack adds its date later, so it stays longest.
   const majors = [...new Set(buildpack.versions.map((v) => v[0]))];
-  const target = majors.sort((a, b) => (buildpack.removal.get(b) ?? 0) - (buildpack.removal.get(a) ?? 0) || b - a)[0];
+  const stays = (major) => buildpack.removal.get(major)?.getTime() ?? Infinity;
+  const target = majors.sort((a, b) => stays(b) - stays(a) || b - a)[0];
 
   let range = usage.range;
   if (!range) {
@@ -192,8 +194,8 @@ export function evaluate(usage, buildpack, { now, warnDays }) {
 
   // Cloud Foundry picks the newest matching version; the line that stays longest decides the deadline.
   const picked = matching.at(-1);
-  const ends = [...new Set(matching.map((v) => v[0]))].map((major) => buildpack.removal.get(major)).filter(Boolean);
-  const lastEnd = ends.length ? new Date(Math.max(...ends)) : null;
+  const lastStay = Math.max(...matching.map((v) => stays(v[0])));
+  const lastEnd = Number.isFinite(lastStay) ? new Date(lastStay) : null;
   if (lastEnd) {
     const days = daysUntil(lastEnd, now);
     if (days < 0) {
