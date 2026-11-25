@@ -8,8 +8,11 @@ version and the date. The tests fail while the version in `package.json` has
 no entry here, and the Release workflow publishes the entry as the GitHub
 release notes.
 
-## Unreleased
+## 0.5.0 - 2026-11-25
 
+- A pull request that updates UI5 links the changes between the old and the
+  new version in UI5 Lib Diff (ui5-lib-diff.marianzeis.de), for SAPUI5 or
+  OpenUI5 as the app uses it.
 - New agent skill for AI coding agents such as Claude Code, Codex and GitHub
   Copilot. It sets stack-sentinel up in a project: a first scan, the pipeline
   example, and a short list of the variables, secrets and permissions the

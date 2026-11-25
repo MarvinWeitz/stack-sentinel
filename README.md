@@ -379,7 +379,10 @@ Cloud Foundry, which would be a guess.
   (`cap`) are never set to merge.
 - **Release notes** are part of each pull request: links to the SAPUI5
   change log of the new version, the Node.js change log of the new major and
-  the CAP release notes. For `npm-audit`, each package lists the advisories
+  the CAP release notes. A UI5 update also links the changes between the old
+  and the new version in [UI5 Lib Diff](https://ui5-lib-diff.marianzeis.de/):
+  SAPUI5 or OpenUI5, from `framework.name` in `ui5.yaml` or the CDN host the
+  app loads from. For `npm-audit`, each package lists the advisories
   it fixes and, when its repository is on GitHub, the release notes published
   there between the old and the new version (the newest five, folded). Text
   from those releases cannot notify anyone or link issues: mentions and

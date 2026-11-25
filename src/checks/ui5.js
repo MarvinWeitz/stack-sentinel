@@ -216,6 +216,9 @@ export function evaluate(usage, index, { now, requireLts, warnDays, maintenanceD
     }
   }
 
+  // SAPUI5 or OpenUI5, so a fix pull request can link the changes between the two versions
+  for (const f of findings) if (f.fix && usage.ui5Type) f.fix.ui5Type = usage.ui5Type;
+
   if (findings.length === 0) {
     add('ok', `UI5 ${usage.version} is a supported${minor.lts ? ' long-term maintenance' : ''} version.`);
   }
@@ -228,6 +231,27 @@ export function evaluate(usage, index, { now, requireLts, warnDays, maintenanceD
 export function versionFromUi5Yaml(text) {
   return frameworkVersionLine(text.split(/\r?\n/))?.version ?? null;
 }
+
+/** framework.name in a ui5.yaml: 'SAPUI5', 'OpenUI5', or null when it names neither. */
+export function frameworkName(text) {
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^framework:\s*(#.*)?$/.test(lines[i])) continue;
+    let depth = null;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (/^\S/.test(lines[j])) break; // left the framework block
+      if (lines[j].trim() === '' || lines[j].trim().startsWith('#')) continue;
+      const indent = lines[j].length - lines[j].trimStart().length;
+      depth ??= indent;
+      const m = indent === depth && /^\s+name:\s*["']?(\w+)/.exec(lines[j]);
+      if (m) return { sapui5: 'SAPUI5', openui5: 'OpenUI5' }[m[1].toLowerCase()] ?? null;
+    }
+  }
+  return null;
+}
+
+/** Which UI5 a CDN host serves: OpenUI5 from the openui5 hosts, SAPUI5 from the others. */
+export const hostUi5Type = (host) => (/openui5/i.test(host ?? '') ? 'OpenUI5' : 'SAPUI5');
 
 /** The line of a ui5.yaml that holds framework.version: { index, version }, or null. */
 export function frameworkVersionLine(lines) {
@@ -375,9 +399,11 @@ export async function detect(root, files, cfg) {
     if (yamlRe.test(file)) {
       const text = await read();
       const version = versionFromUi5Yaml(text);
-      if (version) usages.push({ kind: 'framework', file, version });
+      // the preview proxy loads the same UI5 as the build; SAP Fiori tools apps are SAPUI5
+      const ui5Type = frameworkName(text) ?? 'SAPUI5';
+      if (version) usages.push({ kind: 'framework', file, version, ui5Type });
       const preview = previewFromUi5Yaml(text);
-      if (preview?.version) usages.push({ kind: 'preview', file, version: preview.version });
+      if (preview?.version) usages.push({ kind: 'preview', file, version: preview.version, ui5Type });
       else if (preview) notes.push({
         check: 'ui5-version', severity: 'info', source: 'preview', file, local: true,
         message: 'Local preview (fiori-tools-proxy) loads the latest UI5 release, which can differ from the version the app runs on when deployed.',
@@ -387,7 +413,7 @@ export async function detect(root, files, cfg) {
       // Local test pages (a launchpad sandbox, QUnit pages) are served during development only.
       const testPage = testPathRe.test(file) || testContentRe.test(html);
       for (const { version, host } of bootstrapsFromHtml(html, cfg.cdnHosts)) {
-        if (version) usages.push({ kind: 'bootstrap', file, version, host, testPage });
+        if (version) usages.push({ kind: 'bootstrap', file, version, host, testPage, ui5Type: hostUi5Type(host) });
         else notes.push({
           check: 'ui5-version', severity: testPage ? 'info' : latestSeverity, source: 'bootstrap', file, host,
           message: testPage
