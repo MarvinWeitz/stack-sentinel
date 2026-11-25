@@ -1,6 +1,6 @@
 {
   "name": "stack-sentinel",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Sets up @cbs-consulting/stack-sentinel in SAP UI5, CAP and Node.js projects: the weekly scan pipeline on GitHub Actions or Azure DevOps, Teams reports, fix pull requests and ignore rules.",
   "author": {
     "name": "cbs Corporate Business Solutions Unternehmensberatung GmbH",
