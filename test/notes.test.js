@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { githubRepository, quote, releaseNotes, tagVersion } from '../src/fix/notes.js';
+import { githubRepository, quote, releaseNotes, tagVersion, ui5DiffLink } from '../src/fix/notes.js';
 
 test('text from other repositories notifies nobody and links no issues there', () => {
   const out = quote('Thanks @alice (#123, owner/repo#9) see https://github.com/x/y/pull/4 and a@b.c, &#35;');
@@ -75,4 +75,26 @@ test('UI5, Node.js and CAP: links to their change logs', async () => {
   ]);
   assert.equal((await releaseNotes({ id: 'cap' }, [change('^9')])).length, 4);
   assert.deepEqual(await releaseNotes({ id: 'npm-overrides' }, [change(undefined)]), []);
+});
+
+test('UI5: links the changes between the old and the new version in UI5 Lib Diff', async () => {
+  const change = (version, to, ui5Type) => ({ finding: { version, fix: { to, ...(ui5Type ? { ui5Type } : {}) } } });
+  const lines = await releaseNotes({ id: 'ui5' }, [
+    change('1.120.51', '1.148.12', 'SAPUI5'), change('1.120.51', '1.148.12', 'SAPUI5'),
+    change('1.108.45', '1.148.12', 'OpenUI5'), change('1.136.x', '1.148.x'), change(undefined, '1.148.12'),
+  ]);
+  assert.deepEqual(lines.slice(3), [
+    '- [SAPUI5 1.148.12 change log](https://ui5.sap.com/1.148.12/#/releasenotes.html)',
+    '- [SAPUI5 change log](https://ui5.sap.com/#/releasenotes.html) for 1.148.x',
+    '- [Changes in OpenUI5 from 1.108.45 to 1.148.12](https://ui5-lib-diff.marianzeis.de/?versionFrom=1.108.45&versionTo=1.148.12&ui5Type=OpenUI5) (UI5 Lib Diff)',
+    '- [Changes in SAPUI5 from 1.120.51 to 1.148.12](https://ui5-lib-diff.marianzeis.de/?versionFrom=1.120.51&versionTo=1.148.12&ui5Type=SAPUI5) (UI5 Lib Diff)',
+    '- [Changes in SAPUI5 from 1.136.0 to 1.148.0](https://ui5-lib-diff.marianzeis.de/?versionFrom=1.136.0&versionTo=1.148.0&ui5Type=SAPUI5) (UI5 Lib Diff)',
+  ]);
+  // the same version, a step back or a version that is not one: no link
+  assert.equal(ui5DiffLink('1.148.12', '1.148.12'), null);
+  assert.equal(ui5DiffLink('1.148.12', '1.136.5'), null);
+  assert.equal(ui5DiffLink('latest', '1.148.12'), null);
+  assert.equal(ui5DiffLink('1.120', '1.120.5').url, 'https://ui5-lib-diff.marianzeis.de/?versionFrom=1.120.0&versionTo=1.120.5&ui5Type=SAPUI5');
+  // the parameters are encoded
+  assert.match(ui5DiffLink('1.1.0', '1.2.0', 'Open UI5&x').url, /ui5Type=Open\+UI5%26x$/);
 });
