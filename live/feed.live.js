@@ -28,7 +28,8 @@ test('every version entry has a known status and readable dates', () => {
     assert.equal(typeof v.lts, 'boolean', `lts on ${v.version}`);
     for (const field of ['eom', 'eomm', 'eocp']) {
       const text = v[field];
-      if (!text || normaliseStatus(v.support) === 'skipped') continue;
+      // "Standard Support": a new version in maintenance whose end SAP has not set yet
+      if (!text || normaliseStatus(v.support) === 'skipped' || /^standard support$/i.test(text.trim())) continue;
       assert.ok(parseQuarter(text), `${field} "${text}" on ${v.version} is not a quarter`);
     }
   }
@@ -81,9 +82,12 @@ test('the Cloud Foundry buildpack manifest has the expected format', async () =>
   const buildpack = parseBuildpackManifest(await makeFetchText(settings.timeoutSeconds)(settings.cf.feed));
   assert.ok(buildpack.versions.length >= 1, 'no Node.js versions listed');
   assert.match(buildpack.defaultRange ?? '', /^\d+\.x$/, 'default Node.js version');
-  for (const [major] of buildpack.versions) {
+  // The buildpack adds the removal date of a new line some time after it ships the line.
+  const majors = [...new Set(buildpack.versions.map(([major]) => major))];
+  for (const major of majors.slice(0, -1)) {
     assert.ok(buildpack.removal.has(major), `no removal date for the shipped Node.js ${major} line`);
   }
+  assert.ok(buildpack.removal.size >= 1, 'no removal dates for Node.js at all');
 });
 
 test('the npm registry still flags unsupported CAP versions the way the check expects', async () => {
